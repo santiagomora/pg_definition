@@ -10,3 +10,4 @@ pgdriver.egg-info
 dist
 commit.msg
 pyvenv.cfg
+*.kate-swp
