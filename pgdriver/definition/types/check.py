@@ -1,0 +1,551 @@
+from abc import\
+    abstractmethod,\
+    ABC
+from typing import\
+    Any,\
+    Protocol,\
+    Generic,\
+    TypeVar,\
+    Union,\
+    cast,\
+    Optional,\
+    Callable,\
+    Sized,\
+    get_args,\
+    get_origin,\
+    Annotated
+from pydantic import\
+    BaseModel
+from pydantic import\
+    ValidationInfo
+from numbers import\
+    Number
+from decimal import\
+    Decimal
+from datetime import\
+    datetime,\
+    time,\
+    date
+
+# TODO la validacion debe ocurrir antes de la agregacion
+# TODO las clases hijo no deben ver los atributos de las clases padre
+# 
+# int es compatible con number por lo cual para comparaciones es suficiente 
+# que el otro tipo tambien lo sea
+# me falta ajustar
+# indica la clase base con la cual es compatible el type
+# capaz podamos hacer la compatibilidad mas sencilla
+# el siguiente snippet de stack overflow indica como obtener la clase base de 
+# un type. no hace falta este diccionario pedorro
+# >>> class A(object):
+# >>>     pass
+# >>>
+# >>> class B(A):
+# >>>     pass
+# >>>
+# >>> import inspect
+# >>> inspect.getmro(B)
+# (<class '__main__.B'>, <class '__main__.A'>, <type 'object'>)
+_type_compatibility: dict[type, type] = {
+    int: Number,
+    Decimal: Number,
+    float: Number,
+    str: str,
+    time: time,
+    datetime: datetime,
+    date: date,
+    # PGClass: PGClass,
+    bool: bool}
+
+# para levantar los errores en esta capa
+# from pydantic_core import PydanticCustomError
+# raise PydanticCustomError(
+#             'invalid_json',
+#             'Input is not valid json',
+#         )
+# levanta error al estilo pydantic:
+# """
+# 1 validation error for function-wrap[json_custom_error_validator()]
+#   Input is not valid json [type=invalid_json, input_value={'x': <object object at 0x0123456789ab>}, input_type=dict]
+# """
+# from ..migration.representation import PGRepresentable
+
+# TODO 1:
+
+
+# pensamiento sobre tipado:
+# tengo un par de problemas con el tipado:
+# 1. como relacionar el tipo anotado con el tipo usado para la restriccion.
+class SupportLen(Protocol):
+    def __len__(self) -> int: ...
+
+
+class SupportLe(Protocol):
+    def __le__(self, other: Any) -> bool: ...
+
+
+class SupportLt(Protocol):
+    def __lt__(self, other: Any) -> bool: ...
+
+
+class SupportGe(Protocol):
+    def __ge__(self, other: Any) -> bool: ...
+
+
+class SupportGt(Protocol):
+    def __gt__(self, other: Any) -> bool: ...
+
+
+class SupportEq(Protocol):
+    def __eq__(self, other: Any) -> bool: ...
+
+
+class SupportNe(Protocol):
+    def __ne__(self, other: Any) -> bool: ...
+
+
+class SupportAdd(Protocol):
+    def __add__(self, other: Any) -> Any: ...
+    def __radd__(self, other: Any) -> Any: ...
+
+
+class SupportSub(Protocol):
+    def __sub__(self, other: Any) -> Any: ...
+    def __rsub__(self, other: Any) -> Any: ...
+
+
+class SupportTDiv(Protocol):
+    def __truediv__(self, other: Any) -> Any: ...
+    def __rtruediv__(self, other: Any) -> Any: ...
+
+
+class SupportMod(Protocol):
+    def __mod__(self, other: Any) -> Any: ...
+    def __rmod__(self, other: Any) -> Any: ...
+
+
+class SupportMul(Protocol):
+    def __mul__(self, other: Any) -> Any: ...
+    def __rmul__(self, other: Any) -> Any: ...
+
+
+# T es el tipo generico envuelto por los ref, el tipo esperado para comparar
+# con lo que estamos anotando
+# V es el tipo que estamos anotando, tiene que ser comparable por lo cual no podemos 
+# incluir enum
+T = TypeVar('T', bound=Union[
+    Sized,
+    SupportLe,
+    SupportLt,
+    SupportGe,
+    SupportGt,
+    SupportEq,
+    SupportNe,
+    SupportAdd,
+    SupportSub,
+    SupportTDiv,
+    SupportMod,
+    SupportMul
+])
+V = TypeVar('V')
+# V no tiene que tener este bound, con check_type de pg_check
+# la compatibilidad entre el type anotado y el type del check 
+# deberia estar asegurada
+# V = TypeVar('V', bound=Union[
+#     pg_text,
+#     pg_float,
+#     pg_json,
+#     pg_timestamp,
+#     pg_timestamptz,
+#     pg_date,
+#     pg_decimal,
+#     pg_time,
+#     pg_bytes,
+#     pg_timetz,
+#     # pg_bool,
+#     # pg_class,
+#     pg_int,
+#     pg_bigint])
+SLE = TypeVar('SLE', bound=SupportLe)
+SLT = TypeVar('SLT', bound=SupportLt)
+SGE = TypeVar('SGE', bound=SupportGe)
+SGT = TypeVar('SGT', bound=SupportGt)
+SEQ = TypeVar('SEQ', bound=SupportEq)
+SNE = TypeVar('SNE', bound=SupportNe)
+SADD = TypeVar('SADD', bound=SupportAdd)
+SSUB = TypeVar('SSUB', bound=SupportSub)
+STDIV = TypeVar('STDIV', bound=SupportTDiv)
+SMOD = TypeVar('SMOD', bound=SupportMod)
+SMUL = TypeVar('SMUL', bound=SupportMul)
+
+
+class Reference(BaseModel, Generic[T]):
+    def __init__(self) -> None:
+        BaseModel.__init__(self)
+
+    # por definir lo que devuelve
+    @abstractmethod
+    def as_str(self, column_name: str) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def value(self, info: ValidationInfo) -> T:
+        pass
+
+
+class FieldRef(Reference[T]):
+    def __init__(self, field_name: str) -> None:
+        super().__init__()
+        # el field debe ser un atributo de la clase que registra la anotacion
+        self._field_name: str = field_name
+
+    # def to_description_dict(self, column_name: str) -> dict[str, Any]:
+        # return {'left_operand': column_name,
+                # 'right_operand': self._field_name}
+
+    def value(self, info: ValidationInfo) -> T:
+        # info tiene un atributo data con los datos validos del modelo
+        # para poder validar la dependencia entre dos campos
+        # es necesario que el campo que define la relacion aparezca
+        # despues del objetivo en la definicion del modelo
+        return cast(T, info.data[self._field_name])
+
+    # no se si column_name sea apropiado para los Ref
+    def as_str(self, column_name: str) -> str:
+        return self._field_name
+
+
+class LiteralRef(Reference[T]):
+    def __init__(self, literal: T) -> None:
+        super().__init__()
+        self._literal = literal
+
+    # no se si column_name sea apropiado para los Ref
+    def as_str(self, column_name: str) -> str:
+        return str(self._literal)
+
+    def value(self, info: ValidationInfo) -> T:
+        return self._literal
+
+
+class Attribute(Generic[T, V], ABC):
+    def __init__(self, wrapped_callable: Callable[[T], V]) -> None:
+        self._wrapped_callable = wrapped_callable
+
+    @abstractmethod
+    def as_str(self, column_name: str) -> str:
+        pass
+
+    def call(self, ref: Reference[T], info: ValidationInfo) -> V:
+        return self._wrapped_callable(self._wrapped_callable(ref.value(info)))
+
+
+class Length(Attribute[Sized, int]):
+    def __init__(self) -> None:
+        super().__init__(len)
+
+    def as_str(self, column_name: str) -> str:
+        return f'length({column_name})'
+
+
+class AttributeRef(Reference[T], Generic[T, V]):
+    # se llama atributo porque postgres permite la extraccion de atributos
+    # de composites mediante notacion funcional, esto apunta a algo similar
+    # attribute mas alla de ser un callable, debe ser un callable representable
+    # en string
+    def __init__(self, attr: Attribute[T, V], ref: Reference[V]) -> None:
+        super().__init__()
+        self._ref = ref
+        self._attr = attr
+
+    # esto es un attribute que se extrae con notacion funcional desde postgres
+    # el attribute tiene que tener una representacion en funcional
+    # el ref tiene que tener una representacion funcional
+    # hay que aplicar el atributo tanto a la izquierda como a la derecha
+    def as_str(self, column_name: str) -> str:
+        operand: str = self._ref.as_str(column_name)
+        return self._attr.as_str(operand)
+
+    def value(self, info: ValidationInfo) -> T:
+        return self._attr.call(self._ref, info)
+
+
+class OperationRef(Reference[T]):
+    def __init__(self, *operands: Reference[T]) -> None:
+        super().__init__()
+        if len(operands) < 2:
+            raise ValueError
+        self._operands: tuple[Reference[T], ...] = operands
+
+    @abstractmethod
+    def operate(self, acc: T, other: T) -> T:
+        pass
+
+    def value(self, info: ValidationInfo) -> T:
+        acc: Optional[T] = None
+        for op in self._operands:
+            opval: T = op.value(info)
+            acc = opval if acc is None else self.operate(acc, opval)
+        return cast(T, acc)
+
+
+class add_(OperationRef[SADD]):
+    def __init__(self, *operands: Reference[SADD]) -> None:
+        super().__init__(*operands)
+
+    def operate(self, acc: SADD, other: SADD) -> SADD:
+        return cast(SADD, acc + other)
+
+    def as_str(self, column_name: str) -> str:
+        operation: str = ' + '.join([operand.as_str(column_name) for operand in self._operands])
+        return f'({operation})'
+
+
+class sub_(OperationRef[SSUB]):
+    def __init__(self, *operands: Reference[SSUB]) -> None:
+        super().__init__(*operands)
+
+    def operate(self, acc: SSUB, other: SSUB) -> SSUB:
+        return cast(SSUB, acc - other)
+
+    def as_str(self, column_name: str) -> str:
+        operation: str = ' - '.join([operand.as_str(column_name) for operand in self._operands])
+        return f'({operation})'
+
+
+class mul_(OperationRef[SMUL]):
+    def __init__(self, *operands: Reference[SMUL]):
+        super().__init__(*operands)
+
+    def operate(self, acc: SMUL, other: SMUL) -> SMUL:
+        return cast(SMUL, acc * other)
+
+    def as_str(self, column_name: str) -> str:
+        operation: str = ' * '.join([operand.as_str(column_name) for operand in self._operands])
+        return f'({operation})'
+
+
+class div_(OperationRef[STDIV]):
+    def __init__(self, *operands: Reference[STDIV]) -> None:
+        super().__init__(*operands)
+
+    def operate(self, acc: STDIV, other: STDIV) -> STDIV:
+        return cast(STDIV, acc / other)
+
+    def as_str(self, column_name: str) -> str:
+        operation: str = ' / '.join([operand.as_str(column_name) for operand in self._operands])
+        return f'({operation})'
+
+
+class mod_(OperationRef[SMOD]):
+    def __init__(self, *operands: Reference[SMOD]) -> None:
+        super().__init__(*operands)
+
+    def operate(self, acc: SMOD, other: SMOD) -> SMOD:
+        return cast(SMOD, acc % other)
+
+    def as_str(self, column_name: str) -> str:
+        operation: str = ' % '.join([operand.as_str(column_name) for operand in self._operands])
+        return f'({operation})'
+
+
+class Specification(BaseModel, Generic[T]):
+    def _extract_underlying_type(self, annotation: type) -> set[type]:
+        under: set[type] = set()
+        if get_origin(annotation) == Union:
+            for t in get_args(annotation):
+                under = under.union(self._extract_underlying_type(t))
+        elif get_origin(annotation) == Annotated:
+            under = set((get_args(annotation)[0],))
+        else:
+            under = set((annotation, ))
+        return under
+
+    def check_type(self, annotated_type: type, check_type: type) -> None:
+        # hay que cambiar esto, yo habia definido un type pg_numeric para poder comparar int, float, decimal 
+        # con con cualquier otra instancia de numbers, por eso era necesario trabajar con sets y usar 
+        # _extract_underlying_type. Habia creado _type_compatibility como un mapeo de un type con 
+        # un set de types con el cual es comparable ese type.
+        # Este enfoque es equivocado, el mapeo correcto es a traves de clases base y verificando
+        # que el type del check sea una subclase compatible con el type anotado, o, si llega a 
+        # ser una union, todos los types que participan en la union deben ser subclase
+        # de la clase indicada en la compatibilidad
+        annotated: set[type] = self._extract_underlying_type(annotated_type)
+        check: set[type] = self._extract_underlying_type(check_type)
+        # el type del check debe ser un subconjunto de los types compatibles con el anotado
+        if check == annotated:
+            return
+        for t in annotated:
+            if t not in _type_compatibility:
+                raise TypeError(f'Compatibility not configured for type {annotated_type!r}')
+            # if not check.issubset(_type_compatibility[t]):
+                # raise TypeError(f'Annotated type {annotated_type!r} incompatible with check type {check_type!r}')
+
+    @abstractmethod
+    def as_str(self, column_name: str) -> str:
+        pass
+
+    @abstractmethod
+    def check_value(self, value: Any, info: ValidationInfo) -> None:
+        # valida que el valor value cumpla con el spec
+        pass
+
+
+class and_(Specification[T]):
+    def __init__(self, *specs: Specification[T]) -> None:
+        super().__init__()
+        if len(specs) < 2:
+            raise ValueError
+        self._specs: tuple[Specification[T], ...] = specs
+
+    def check_value(self, value: T, info: ValidationInfo) -> None:
+        errors: list[str] = []
+        for spec in self._specs:
+            try:
+                spec.check_value(value, info)
+            except ValueError as e:
+                errors.append(str(e))
+        if len(errors) > 0:
+            raise ValueError('\n'.join(errors))
+
+    def as_str(self, column_name: str) -> str:
+        spec: str = ' AND '.join([spec.as_str(column_name) for spec in self._specs])
+        return f'({spec})'
+
+
+class or_(Specification[T]):
+    def __init__(self, *specs: Specification[T]) -> None:
+        super().__init__()
+        if len(specs) < 2:
+            raise ValueError
+        self._specs: tuple[Specification[T], ...] = specs
+
+    def check_value(self, value: T, info: ValidationInfo) -> None:
+        errors: list[str] = []
+        for spec in self._specs:
+            try:
+                spec.check_value(value, info)
+            except ValueError as e:
+                errors.append(str(e))
+        if len(errors) == len(self._specs):
+            raise ValueError('\n'.join(errors))
+
+    def as_str(self, column_name: str) -> str:
+        spec: str = ' OR '.join([spec.as_str(column_name) for spec in self._specs])
+        return f'({spec})'
+
+
+# aplican a types que definan __lt__, __gt__, __le__, __ge__, __eq__, __neq__
+# en postgis se traduce a is distinct from o is not distinct from
+# capaz pueda definirse una funcion de postgres para comparaciones mas complicadas
+# el attr_name es el nombre del campo sobre el cual fue definida la metadata
+# mypy me lanza un error al intentar configurar esto como dataclass, no parece
+# reconocer los argumentos al instanciar
+class lt_(Specification[SLT]):
+    def __init__(self, ref: Reference[SLT]) -> None:
+        super().__init__()
+        self._ref = ref
+
+    def check_value(self, value: SLT, info: ValidationInfo) -> None:
+        wrapped: SLT = self._ref.value(info)
+        if not wrapped < value:
+            raise ValueError(f'Less than check error: value "{value}" is greater or equal than "{wrapped}"')
+
+    def as_str(self, column_name: str) -> str:
+        return f'{column_name} < {self._ref.as_str(column_name)}'
+
+
+class gt_(Specification[SGT]):
+    def __init__(self, ref: Reference[SGT]) -> None:
+        super().__init__()
+        self._ref = ref
+
+    def check_value(self, value: SGT, info: ValidationInfo) -> None:
+        wrapped: SGT = self._ref.value(info)
+        if not wrapped > value:
+            raise ValueError(f'Greater than check error: value "{value}" is less or equal than "{wrapped}"')
+
+    def as_str(self, column_name: str) -> str:
+        return f'{column_name} > {self._ref.as_str(column_name)}'
+
+
+class ge_(Specification[SGE]):
+    def __init__(self, ref: Reference[SGE]) -> None:
+        super().__init__()
+        self._ref = ref
+
+    def check_value(self, value: SGE, info: ValidationInfo) -> None:
+        wrapped: SGE = self._ref.value(info)
+        if not wrapped >= value:
+            raise ValueError(f'Greater than equal check error: value "{value}" is less than "{wrapped}"')
+
+    def as_str(self, column_name: str) -> str:
+        return f'{column_name} >= {self._ref.as_str(column_name)}'
+
+
+class le_(Specification[SLE]):
+    def __init__(self, ref: Reference[SLE]) -> None:
+        super().__init__()
+        self._ref = ref
+
+    def check_value(self, value: SLE, info: ValidationInfo) -> None:
+        wrapped: SLE = self._ref.value(info)
+        if not wrapped <= value:
+            raise ValueError(f'Less than equal check error: value "{value}" is greater than "{wrapped}"')
+
+    def as_str(self, column_name: str) -> str:
+        return f'{column_name} <= {self._ref.as_str(column_name)}'
+
+
+# f'Check predicate types must be compatible "{source!r}"'
+# f'Value "{value!r}" invalid for field "{info.field_name}"'
+class eq_(Specification[SEQ]):
+    def __init__(self, ref: Reference[SEQ]) -> None:
+        super().__init__()
+        self._ref = ref
+
+    def check_value(self, value: SEQ, info: ValidationInfo) -> None:
+        wrapped: SEQ = self._ref.value(info)
+        if not wrapped == value:
+            raise ValueError(f'Equal check error: value "{value}" is not equal to "{wrapped}"')
+
+    def as_str(self, column_name: str) -> str:
+        return f'{column_name} = {self._ref.as_str(column_name)}'
+
+
+class ne_(Specification[SNE]):
+    def __init__(self, ref: Reference[SNE]) -> None:
+        super().__init__()
+        self._ref = ref
+
+    def check_value(self, value: SNE, info: ValidationInfo) -> None:
+        wrapped: SNE = self._ref.value(info)
+        if not wrapped != value:
+            raise ValueError(f'Not equal check error: value "{value}" is equal to "{wrapped}"')
+
+    def as_str(self, column_name: str) -> str:
+        return f'{column_name} <> {self._ref.as_str(column_name)}'
+
+
+class attr_(Specification[T], Generic[T, V]):
+    # to call recibiria len, y luego tiene que recibir una spec
+    # to call no deberia ser callable, deberia ser un wrapper de la funcion
+    # y generar la descripcion correspondiente para representar en el check
+    def __init__(self, to_call: Attribute[T, V], spec: Specification[V]):
+        super().__init__()
+        self._to_call = to_call
+        self._spec = spec
+
+    def check_value(self, value: T, info: ValidationInfo) -> None:
+        try:
+            self._spec.check_value(self._to_call(value), info)
+        except ValueError as e:
+            raise ValueError(f'Attribute "{self._to_call}" error:\n{str(e)}')
+
+    def as_str(self, column_name: str) -> str:
+        left_operand: str = self._to_call.as_str(column_name)
+        return self._spec.as_str(left_operand)
+
+
+class PGCheckDefinition:
+    pass
