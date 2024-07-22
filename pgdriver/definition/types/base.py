@@ -2,13 +2,10 @@ from pgdriver.definition.flow import\
     FlowAccumulator,\
     DefinitionFlow,\
     FlowComponent
-from typing import\
-    Any
 from .representable import\
     PGRepresentable
 from pgdriver.definition.inspection import\
-    extract_by_instance_type_from_inherited_classes,\
-    identity_generator
+    extract_by_instance_type_from_inherited_classes
 
 
 pgobject_definition_flow = DefinitionFlow('pgdriver-object-definition-flow', object)

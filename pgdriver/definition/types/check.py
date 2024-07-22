@@ -16,8 +16,6 @@ from typing import\
     Annotated
 from pydantic import\
     BaseModel
-from pydantic import\
-    ValidationInfo
 from numbers import\
     Number
 from decimal import\
@@ -189,7 +187,7 @@ class Reference(BaseModel, Generic[T]):
         pass
 
     @abstractmethod
-    def value(self, info: ValidationInfo) -> T:
+    def value(self, info: dict[str, Any]) -> T:
         pass
 
 
@@ -203,12 +201,12 @@ class FieldRef(Reference[T]):
         # return {'left_operand': column_name,
                 # 'right_operand': self._field_name}
 
-    def value(self, info: ValidationInfo) -> T:
+    def value(self, info: dict[str, Any]) -> T:
         # info tiene un atributo data con los datos validos del modelo
         # para poder validar la dependencia entre dos campos
         # es necesario que el campo que define la relacion aparezca
         # despues del objetivo en la definicion del modelo
-        return cast(T, info.data[self._field_name])
+        return cast(T, info[self._field_name])
 
     # no se si column_name sea apropiado para los Ref
     def as_str(self, column_name: str) -> str:
@@ -224,7 +222,7 @@ class LiteralRef(Reference[T]):
     def as_str(self, column_name: str) -> str:
         return str(self._literal)
 
-    def value(self, info: ValidationInfo) -> T:
+    def value(self, info: dict[str, Any]) -> T:
         return self._literal
 
 
@@ -236,7 +234,7 @@ class Attribute(Generic[T, V], ABC):
     def as_str(self, column_name: str) -> str:
         pass
 
-    def call(self, ref: Reference[T], info: ValidationInfo) -> V:
+    def call(self, ref: Reference[T], info: dict[str, Any]) -> V:
         return self._wrapped_callable(self._wrapped_callable(ref.value(info)))
 
 
@@ -266,7 +264,7 @@ class AttributeRef(Reference[T], Generic[T, V]):
         operand: str = self._ref.as_str(column_name)
         return self._attr.as_str(operand)
 
-    def value(self, info: ValidationInfo) -> T:
+    def value(self, info: dict[str, Any]) -> T:
         return self._attr.call(self._ref, info)
 
 
@@ -281,7 +279,7 @@ class OperationRef(Reference[T]):
     def operate(self, acc: T, other: T) -> T:
         pass
 
-    def value(self, info: ValidationInfo) -> T:
+    def value(self, info: dict[str, Any]) -> T:
         acc: Optional[T] = None
         for op in self._operands:
             opval: T = op.value(info)
@@ -386,7 +384,7 @@ class Specification(BaseModel, Generic[T]):
         pass
 
     @abstractmethod
-    def check_value(self, value: Any, info: ValidationInfo) -> None:
+    def check_value(self, value: Any, info: dict[str, Any]) -> None:
         # valida que el valor value cumpla con el spec
         pass
 
@@ -398,7 +396,7 @@ class and_(Specification[T]):
             raise ValueError
         self._specs: tuple[Specification[T], ...] = specs
 
-    def check_value(self, value: T, info: ValidationInfo) -> None:
+    def check_value(self, value: T, info: dict[str, Any]) -> None:
         errors: list[str] = []
         for spec in self._specs:
             try:
@@ -420,7 +418,7 @@ class or_(Specification[T]):
             raise ValueError
         self._specs: tuple[Specification[T], ...] = specs
 
-    def check_value(self, value: T, info: ValidationInfo) -> None:
+    def check_value(self, value: T, info: dict[str, Any]) -> None:
         errors: list[str] = []
         for spec in self._specs:
             try:
@@ -446,7 +444,7 @@ class lt_(Specification[SLT]):
         super().__init__()
         self._ref = ref
 
-    def check_value(self, value: SLT, info: ValidationInfo) -> None:
+    def check_value(self, value: SLT, info: dict[str, Any]) -> None:
         wrapped: SLT = self._ref.value(info)
         if not wrapped < value:
             raise ValueError(f'Less than check error: value "{value}" is greater or equal than "{wrapped}"')
@@ -460,7 +458,7 @@ class gt_(Specification[SGT]):
         super().__init__()
         self._ref = ref
 
-    def check_value(self, value: SGT, info: ValidationInfo) -> None:
+    def check_value(self, value: SGT, info: dict[str, Any]) -> None:
         wrapped: SGT = self._ref.value(info)
         if not wrapped > value:
             raise ValueError(f'Greater than check error: value "{value}" is less or equal than "{wrapped}"')
@@ -474,7 +472,7 @@ class ge_(Specification[SGE]):
         super().__init__()
         self._ref = ref
 
-    def check_value(self, value: SGE, info: ValidationInfo) -> None:
+    def check_value(self, value: SGE, info: dict[str, Any]) -> None:
         wrapped: SGE = self._ref.value(info)
         if not wrapped >= value:
             raise ValueError(f'Greater than equal check error: value "{value}" is less than "{wrapped}"')
@@ -488,7 +486,7 @@ class le_(Specification[SLE]):
         super().__init__()
         self._ref = ref
 
-    def check_value(self, value: SLE, info: ValidationInfo) -> None:
+    def check_value(self, value: SLE, info: dict[str, Any]) -> None:
         wrapped: SLE = self._ref.value(info)
         if not wrapped <= value:
             raise ValueError(f'Less than equal check error: value "{value}" is greater than "{wrapped}"')
@@ -504,7 +502,7 @@ class eq_(Specification[SEQ]):
         super().__init__()
         self._ref = ref
 
-    def check_value(self, value: SEQ, info: ValidationInfo) -> None:
+    def check_value(self, value: SEQ, info: dict[str, Any]) -> None:
         wrapped: SEQ = self._ref.value(info)
         if not wrapped == value:
             raise ValueError(f'Equal check error: value "{value}" is not equal to "{wrapped}"')
@@ -518,7 +516,7 @@ class ne_(Specification[SNE]):
         super().__init__()
         self._ref = ref
 
-    def check_value(self, value: SNE, info: ValidationInfo) -> None:
+    def check_value(self, value: SNE, info: dict[str, Any]) -> None:
         wrapped: SNE = self._ref.value(info)
         if not wrapped != value:
             raise ValueError(f'Not equal check error: value "{value}" is equal to "{wrapped}"')
@@ -536,7 +534,7 @@ class attr_(Specification[T], Generic[T, V]):
         self._to_call = to_call
         self._spec = spec
 
-    def check_value(self, value: T, info: ValidationInfo) -> None:
+    def check_value(self, value: T, info: dict[str, Any]) -> None:
         try:
             self._spec.check_value(self._to_call(value), info)
         except ValueError as e:
@@ -545,7 +543,3 @@ class attr_(Specification[T], Generic[T, V]):
     def as_str(self, column_name: str) -> str:
         left_operand: str = self._to_call.as_str(column_name)
         return self._spec.as_str(left_operand)
-
-
-class PGCheckDefinition:
-    pass

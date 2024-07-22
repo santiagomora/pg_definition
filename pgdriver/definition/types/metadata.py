@@ -87,7 +87,7 @@ class pg_check(Generic[T]):
         schema = handler(source)
         # ignore class pg_check[T] has no attribute __orig_class__ error
         # raised by mypy
-        self.predicate.check_type(source, get_args(self.__orig_class__)[0]) # type: ignore[attr-defined]
+        self.predicate.check_type(source, get_args(self.__orig_class__)[0])
         return core_schema.with_info_after_validator_function(
             function=self.validate,
             schema=schema,
@@ -95,5 +95,5 @@ class pg_check(Generic[T]):
         )
 
     def validate(self, value: T, info: ValidationInfo) -> T:
-        self.predicate.check_value(value, info)
+        self.predicate.check_value(value, info.data)
         return value

@@ -6,7 +6,6 @@ from pgdriver.definition.flow import\
     FlowComponent,\
     FlowAccumulator,\
     DefinitionFlow,\
-    FlowAccumulatorErrorsPolicy,\
     FlowComponentException
 from pgdriver.definition.types.metadata import\
     pg_foreign_key,\
@@ -46,49 +45,10 @@ from ordered_set import\
     OrderedSet
 
 
-class PGCheckDefinition:
-    pass
-
-
-class PGTriggerDefinition:
-    pass
-
-
-class PGIndexDefinition:
-    pass
-
-
-class PGUniqueIndexDefinition:
-    pass
-
-
-class PGColumnDefinition:
-    pass
-
-
-class PGPrimaryKeyDefinition:
-    pass
-
-
-class PGForeignKeyDefinition:
-    pass
-
-
-class PGTableDefinition:
-    comment:           Optional[str] = None
-    columns:           Optional[OrderedDict[PGColumnDefinition, None]] = None
-    indexes:           Optional[dict[str, PGIndexDefinition]] = None
-    unique_indexes:    Optional[dict[str, PGUniqueIndexDefinition]] = None
-    foreign_keys:      Optional[dict[str, PGForeignKeyDefinition]] = None
-    primary_keys:      Optional[dict[str, PGPrimaryKeyDefinition]] = None
-    base_tables:       Optional[tuple[type]] = None
-    triggers:          Optional[PGTriggerDefinition] = None
-
-
 # hay un detalle en hacerlo de esta manera, una tabla de postgres puede tener herencia 
 # multiple, para que no haya conflicto en las definiciones, me parece que tendremos que 
 # crear una tercera clase con los merge de las clases base y aplicarla sobre la clase final
-class pg_table(PGBaseModel, PGRepresentable[PGTableDefinition], ABC):
+class pg_table(PGBaseModel, ABC):
     pass
 
 
@@ -97,7 +57,7 @@ pgtable_definition_flow: DefinitionFlow[pg_table] = DefinitionFlow[pg_table]('pg
 
 class ValidateRestrictedMetadataTypesComponent(FlowComponent[pg_table]):
     """
-    Metadata in fields are restricted to the restricted instances
+    Metadata in fields are restricted to the passed instances
     """
 
     def __init__(self, restricted: list[type]):
