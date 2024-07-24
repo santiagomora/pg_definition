@@ -14,9 +14,14 @@ from enum import\
     Enum,\
     auto
 import pprint
+from heapq import\
+    heappush,\
+    heappop
 
 
-# tengo una dependencia circular con Stage y Task, necesito resolverla
+# para domains cambia un poco porque entra por metaclase, con lo cual issubclass va a fallar
+
+
 class FlowComponentException(Exception):
     def __init__(self, name, error_list):
         super().__init__(f'Error in component {name}')
@@ -31,6 +36,9 @@ class FlowEndException(Exception):
 class FlowAccumulatorErrorsPolicy(Enum):
     LOG_INFO = auto()
     END_FLOW = auto()
+
+
+T = TypeVar('T')
 
 
 class FlowAccumulator:
@@ -78,9 +86,6 @@ class FlowAccumulator:
         flow_errors[exception.component_name] = exception
         self._errors[flow_name] = flow_errors
         return self
-
-
-T = TypeVar('T')
 
 
 class FlowComponent(ABC, Generic[T]):
@@ -158,3 +163,28 @@ class DefinitionFlow(Generic[T]):
             except FlowEndException as e:
                 raise e
 
+
+# se asocia el definition context del type con el definition context del type padre
+# se asume que el type a registrar es parte de una definicion valida
+class DefinitionFlowRegistry:
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._flows: dict[type, DefinitionFlow] = {}
+
+    def register_definition_flow(self, flow: DefinitionFlow) -> None:
+        if flow.target in self._flows:
+            raise Exception(f'Context registry: {flow.target} definition flow already defined: {self[flow.target]._name}')
+        self._flows[flow.target] = flow
+
+    def execute_definition_flow(self, on_type: type) -> dict[Any, Any]:
+        execute_flows: list[DefinitionFlow] = []
+        accumulator: FlowAccumulator = FlowAccumulator(on_type)
+        for flow_target in self._flows:
+            if issubclass(on_type, flow_target):
+                heappush(execute_flows, self._flows[flow_target])
+        if len(execute_flows) == 0:
+            raise Exception(f'Context registry: definition flows not defined for {on_type}')
+        while len(execute_flows) > 0:
+            flow = heappop(execute_flows)
+            flow.execute(on_type, accumulator)
+        return accumulator

@@ -146,7 +146,7 @@ T = TypeVar('T', bound=Union[
     SupportMul
 ])
 V = TypeVar('V')
-# V no tiene que tener este bound, con check_type de pg_check
+# V no tiene que tener este bound, con check_type de pg_check_meta
 # la compatibilidad entre el type anotado y el type del check 
 # deberia estar asegurada
 # V = TypeVar('V', bound=Union[

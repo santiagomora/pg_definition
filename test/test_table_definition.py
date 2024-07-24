@@ -1,7 +1,7 @@
 from pgdriver.definition.types.metadata import \
-    pg_unique,\
-    pg_index,\
-    pg_check
+    pg_unique_index_meta,\
+    pg_index_meta,\
+    pg_check_meta
 from pgdriver.definition.types.check import\
     LiteralRef,\
     FieldRef,\
@@ -19,7 +19,7 @@ from decimal import\
 from pgdriver.definition.types.table import\
     pg_table
 from pgdriver.definition.types.metadata import\
-    pg_foreign_key
+    pg_foreign_key_meta
 from pgdriver.definition.types.builtin import\
     pg_int,\
     pg_text,\
@@ -35,21 +35,21 @@ from pgdriver.definition.flow import\
 
 class test(pg_table):
     test_field1: Annotated[pg_int,
-                           pg_index(name='index_1', type='hash'),
-                           pg_check[pg_int](
+                           pg_index_meta(name='index_1', type='hash'),
+                           pg_check_meta[pg_int](
                                predicate=gt_[pg_int](LiteralRef[pg_int](Decimal(14))),
                                name='check_1')]
 
     test_field2: Annotated[pg_text,
-                           pg_index(name='index_1', type='hash'),
-                           pg_check[pg_text](
+                           pg_index_meta(name='index_1', type='hash'),
+                           pg_check_meta[pg_text](
                                predicate=attr_[pg_text, pg_int](Length(), ge_[pg_int](LiteralRef[pg_int](10))),
                                name='check_2'),
-                           pg_unique(name='tests')]
+                           pg_unique_index_meta(name='tests')]
 
     test_field3: Annotated[pg_int,
-                           pg_index(name='index_2'),
-                           pg_check[pg_int](
+                           pg_index_meta(name='index_2'),
+                           pg_check_meta[pg_int](
                                predicate=and_[pg_int](
                                    ge_[pg_int](LiteralRef[pg_int](0)),
                                    le_[pg_int](
@@ -61,29 +61,29 @@ class test(pg_table):
                                name='check1')]
 
     test_field4: Annotated[pg_text,
-                           pg_check[pg_text](
+                           pg_check_meta[pg_text](
                                predicate=attr_[pg_text, pg_int](Length(), gt_[pg_int](AttributeRef[pg_int, pg_text](Length(), FieldRef[pg_text]('test_field2')))),
                                name='check_3'),
-                           pg_index(name='index_2')]
+                           pg_index_meta(name='index_2')]
 
 
 class test1(test):
     test_field1: Annotated[pg_int,
-                           pg_check[pg_int](
+                           pg_check_meta[pg_int](
                                predicate=gt_[pg_int](LiteralRef[pg_int](Decimal(14))),
                                name='check_1'),
-                           pg_index(name='index_1', type='hash')]
+                           pg_index_meta(name='index_1', type='hash')]
 
     test1_field2: Annotated[pg_text,
-                            pg_index(name='peo', type='hash'),
-                            pg_check[pg_text](
+                            pg_index_meta(name='peo', type='hash'),
+                            pg_check_meta[pg_text](
                                 predicate=attr_[pg_text, pg_int](Length(), ge_[pg_int](LiteralRef[pg_int](10))),
                                 name='check2'),
-                            pg_unique(name='tests')]
+                            pg_unique_index_meta(name='tests')]
 
     test1_field3: Annotated[pg_int,
-                            pg_index(name='culo'),
-                            pg_check[pg_int](
+                            pg_index_meta(name='culo'),
+                            pg_check_meta[pg_int](
                                 predicate=and_[pg_int](
                                     ge_[pg_int](LiteralRef[pg_int](0)),
                                     le_[pg_int](
@@ -95,27 +95,27 @@ class test1(test):
                                     name='check1')]
 
     test1_field4:  Annotated[pg_text,
-                             pg_check[pg_text](
+                             pg_check_meta[pg_text](
                                 predicate=attr_[pg_text, pg_int](Length(), gt_[pg_int](AttributeRef[pg_int, pg_text](Length(), FieldRef[pg_text]('culo')))),
                                 name='check3'),
-                             pg_index(name='culo')]
+                             pg_index_meta(name='culo')]
 
 
 class test2(pg_table):
     test2_field1: Annotated[pg_int,
-                            pg_foreign_key(
+                            pg_foreign_key_meta(
                                 other_class=test1,
                                 other_class_column_name='field1',
                                 name='test2'),
-                            pg_unique(name='test2_unique')]
+                            pg_unique_index_meta(name='test2_unique')]
 
     test2_field2: Annotated[pg_text,
-                            pg_index(name='peo', type='hash'),
-                            pg_foreign_key(
+                            pg_index_meta(name='peo', type='hash'),
+                            pg_foreign_key_meta(
                                 other_class=test1,
                                 other_class_column_name='field2',
                                 name='test2'),
-                            pg_unique(name='test2_unique')]
+                            pg_unique_index_meta(name='test2_unique')]
 
 
 def test_obtain_definition():

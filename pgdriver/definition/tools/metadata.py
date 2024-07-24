@@ -1,4 +1,4 @@
-from dataclasses import\
+from pydantic.dataclasses import\
     dataclass
 from typing import\
     TypeAlias,\
@@ -12,7 +12,7 @@ from pydantic_core import\
 from pydantic import\
     GetCoreSchemaHandler,\
     ValidationInfo
-from .check import\
+from pgdriver.definition.tools.check import\
     Specification,\
     T
 
@@ -27,35 +27,23 @@ PGFKDeleteAction: TypeAlias = Literal['SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO
 
 
 @dataclass(kw_only=True)
-class pg_index:
+class pg_index_meta:
     name: str
     type: PGIndexType = 'btree'
 
 
 @dataclass(kw_only=True)
-class pg_unique:
+class pg_unique_index_meta:
     name: str
 
 
 @dataclass(kw_only=True)
-class pg_primary_key:
+class pg_primary_key_meta:
     name: str
 
 
-# TODO aqui hay que hacer una validacion en el modelo other_class porque el
-# campo al que apunta la fk deben ser indice y debe ser del mismo tipo
-# TODO hacer una manera de sacar __name__ sin acceder directamente a __name__
-# * los campos a los que apuntan la foreign key deben ser del mismo tipo que la 
-# en la tabla que los define
-# * los campos a los que apuntan la foreign key deben ser del mismo tipo que la 
-# que los define
-# * los set de nombre de campo local y foraneo deben tener el mismo tamano
-# * los campos de on_update y on_delete debe coincidir en todos los elementos
-# de la llave de un mismo nombre
-# * la tabla en las llaves de un mismo nombre deben coincidir
-# * la precondicion es que las foreign_key compartan el mismo nombre
 @dataclass(kw_only=True)
-class pg_foreign_key:
+class pg_foreign_key_meta:
     name: str
     other_class: type[Any]
     other_class_column_name: str
@@ -65,15 +53,12 @@ class pg_foreign_key:
 
 # usar para describir el campo del modelo
 @dataclass
-class pg_comment:
+class pg_comment_meta:
     value: str
 
 
 @dataclass(kw_only=True)
-class pg_check(Generic[T]):
-    # no es tan sencillo, hay que modelarlo como un predicado que puede tener
-    # conjuncion con varias columnas de la tabla, pero tambien debe ser usable 
-    # cuando hablamos de domains, tanto composite como tipos simples
+class pg_check_meta(Generic[T]):
     predicate: Specification[T]
     name: str
 
@@ -85,7 +70,7 @@ class pg_check(Generic[T]):
         if self.predicate is None:
             raise ValueError('Check predicate cannot be empty')
         schema = handler(source)
-        # ignore class pg_check[T] has no attribute __orig_class__ error
+        # ignore class pg_check_meta[T] has no attribute __orig_class__ error
         # raised by mypy
         self.predicate.check_type(source, get_args(self.__orig_class__)[0])
         return core_schema.with_info_after_validator_function(
@@ -97,3 +82,4 @@ class pg_check(Generic[T]):
     def validate(self, value: T, info: ValidationInfo) -> T:
         self.predicate.check_value(value, info.data)
         return value
+

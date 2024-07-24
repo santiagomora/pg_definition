@@ -38,7 +38,7 @@ class PGRepresentable(Generic[K]):
 
 
 class PGEnumDefinition:
-    comment: Optional[pg_comment] = None
+    comment: Optional[pg_comment_meta] = None
 
 
 class PGCheckDefinition:
