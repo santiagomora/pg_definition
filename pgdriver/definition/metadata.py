@@ -1,19 +1,29 @@
-from abc import\
-    abstractmethod,\
-    ABC
+from pydantic.dataclasses import\
+    dataclass
 from typing import\
+    TypeAlias,\
+    Literal,\
     Any,\
-    Protocol,\
+    Type,\
     Generic,\
+    get_args,\
+    Protocol,\
     TypeVar,\
     Union,\
     cast,\
     Optional,\
     Callable,\
     Sized,\
-    get_args,\
     get_origin,\
     Annotated
+from pydantic_core import\
+    core_schema
+from pydantic import\
+    GetCoreSchemaHandler,\
+    ValidationInfo
+from abc import\
+    abstractmethod,\
+    ABC
 from pydantic import\
     BaseModel
 from numbers import\
@@ -25,25 +35,47 @@ from datetime import\
     time,\
     date
 
-# TODO la validacion debe ocurrir antes de la agregacion
-# TODO las clases hijo no deben ver los atributos de las clases padre
-# 
-# int es compatible con number por lo cual para comparaciones es suficiente 
-# que el otro tipo tambien lo sea
-# me falta ajustar
-# indica la clase base con la cual es compatible el type
-# capaz podamos hacer la compatibilidad mas sencilla
-# el siguiente snippet de stack overflow indica como obtener la clase base de 
-# un type. no hace falta este diccionario pedorro
-# >>> class A(object):
-# >>>     pass
-# >>>
-# >>> class B(A):
-# >>>     pass
-# >>>
-# >>> import inspect
-# >>> inspect.getmro(B)
-# (<class '__main__.B'>, <class '__main__.A'>, <type 'object'>)
+
+PGIndexType: TypeAlias = Literal['btree', 'hash', 'gin', 'brin', 'gist', 'spgist']
+
+
+PGFKUpdateAction: TypeAlias = Literal['SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO ACTION', 'CASCADE']
+
+
+PGFKDeleteAction: TypeAlias = Literal['SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO ACTION', 'CASCADE']
+
+
+@dataclass(kw_only=True)
+class pg_index_meta:
+    name: str
+    type: PGIndexType = 'btree'
+
+
+@dataclass(kw_only=True)
+class pg_unique_index_meta:
+    name: str
+
+
+@dataclass(kw_only=True)
+class pg_primary_key_meta:
+    name: str
+
+
+@dataclass(kw_only=True)
+class pg_foreign_key_meta:
+    name: str
+    other_class: type[Any]
+    other_class_column_name: str
+    on_update: PGFKUpdateAction = 'NO ACTION'
+    on_delete: PGFKDeleteAction = 'NO ACTION'
+
+
+# usar para describir el campo del modelo
+@dataclass
+class pg_comment_meta:
+    value: str
+
+
 _type_compatibility: dict[type, type] = {
     int: Number,
     Decimal: Number,
@@ -55,25 +87,7 @@ _type_compatibility: dict[type, type] = {
     # PGClass: PGClass,
     bool: bool}
 
-# para levantar los errores en esta capa
-# from pydantic_core import PydanticCustomError
-# raise PydanticCustomError(
-#             'invalid_json',
-#             'Input is not valid json',
-#         )
-# levanta error al estilo pydantic:
-# """
-# 1 validation error for function-wrap[json_custom_error_validator()]
-#   Input is not valid json [type=invalid_json, input_value={'x': <object object at 0x0123456789ab>}, input_type=dict]
-# """
-# from ..migration.representation import PGRepresentable
 
-# TODO 1:
-
-
-# pensamiento sobre tipado:
-# tengo un par de problemas con el tipado:
-# 1. como relacionar el tipo anotado con el tipo usado para la restriccion.
 class SupportLen(Protocol):
     def __len__(self) -> int: ...
 
@@ -127,10 +141,6 @@ class SupportMul(Protocol):
     def __rmul__(self, other: Any) -> Any: ...
 
 
-# T es el tipo generico envuelto por los ref, el tipo esperado para comparar
-# con lo que estamos anotando
-# V es el tipo que estamos anotando, tiene que ser comparable por lo cual no podemos 
-# incluir enum
 T = TypeVar('T', bound=Union[
     Sized,
     SupportLe,
@@ -145,25 +155,9 @@ T = TypeVar('T', bound=Union[
     SupportMod,
     SupportMul
 ])
+
 V = TypeVar('V')
-# V no tiene que tener este bound, con check_type de pg_check_meta
-# la compatibilidad entre el type anotado y el type del check 
-# deberia estar asegurada
-# V = TypeVar('V', bound=Union[
-#     pg_text,
-#     pg_float,
-#     pg_json,
-#     pg_timestamp,
-#     pg_timestamptz,
-#     pg_date,
-#     pg_decimal,
-#     pg_time,
-#     pg_bytes,
-#     pg_timetz,
-#     # pg_bool,
-#     # pg_class,
-#     pg_int,
-#     pg_bigint])
+
 SLE = TypeVar('SLE', bound=SupportLe)
 SLT = TypeVar('SLT', bound=SupportLt)
 SGE = TypeVar('SGE', bound=SupportGe)
@@ -433,12 +427,6 @@ class or_(Specification[T]):
         return f'({spec})'
 
 
-# aplican a types que definan __lt__, __gt__, __le__, __ge__, __eq__, __neq__
-# en postgis se traduce a is distinct from o is not distinct from
-# capaz pueda definirse una funcion de postgres para comparaciones mas complicadas
-# el attr_name es el nombre del campo sobre el cual fue definida la metadata
-# mypy me lanza un error al intentar configurar esto como dataclass, no parece
-# reconocer los argumentos al instanciar
 class lt_(Specification[SLT]):
     def __init__(self, ref: Reference[SLT]) -> None:
         super().__init__()
@@ -526,9 +514,6 @@ class ne_(Specification[SNE]):
 
 
 class attr_(Specification[T], Generic[T, V]):
-    # to call recibiria len, y luego tiene que recibir una spec
-    # to call no deberia ser callable, deberia ser un wrapper de la funcion
-    # y generar la descripcion correspondiente para representar en el check
     def __init__(self, to_call: Attribute[T, V], spec: Specification[V]):
         super().__init__()
         self._to_call = to_call
@@ -543,3 +528,29 @@ class attr_(Specification[T], Generic[T, V]):
     def as_str(self, column_name: str) -> str:
         left_operand: str = self._to_call.as_str(column_name)
         return self._spec.as_str(left_operand)
+
+
+@dataclass(kw_only=True)
+class pg_check_meta(Generic[T]):
+    predicate: Specification[T]
+    name: str
+
+    def __get_pydantic_core_schema__(
+        self,
+        source: Type[T],
+        handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        if self.predicate is None:
+            raise ValueError('Check predicate cannot be empty')
+        schema = handler(source)
+        # ignore class pg_check_meta[T] has no attribute __orig_class__ error
+        # raised by mypy
+        self.predicate.check_type(source, get_args(self.__orig_class__)[0])
+        return core_schema.with_info_after_validator_function(
+            function=self.validate,
+            schema=schema,
+            field_name=handler.field_name)
+
+    def validate(self, value: T, info: ValidationInfo) -> T:
+        self.predicate.check_value(value, info.data)
+        return value

@@ -155,11 +155,14 @@ def extract_first_instance_from_field_metadata(
 def extract_by_instance_type_from_model_fields_info(
     fields: dict[str, FieldInfo],
     instance_type: type,
-    conversion_fn: Callable[[Any], dict[str, Any]]
+    conversion_fn: Optional[Callable[[Any], dict[str, Any]]] = None
 ) -> Generator[dict[str, Any], None, None]:
     for field_name, field_info in fields.items():
         for meta in extract_by_instance_type_from_field_info(field_info, instance_type):
-            yield conversion_fn(field_name, meta)
+            if conversion_fn is not None:
+                yield conversion_fn(field_name, meta)
+            else:
+                yield meta
 
 
 # el patron de error bag lo uso bastante, deberia pasarlo a un decorator
@@ -247,7 +250,16 @@ def ordered_dict_accumulator(
     accumulator.move_to_end(seq_member, last=True)
     return accumulator
 
-# 
+
+def has_private_classmethod(cls: type, methodname: str) -> Any:
+    return hasattr(cls, f'_{cls.__name__}__{methodname}')
+
+
+def execute_private_classmethod(cls: type, methodname: str, *args, **kwargs) -> Any:
+    method = getattr(cls, f'_{cls.__name__}__{methodname}')
+    return method(*args, **kwargs)
+
+
 # # * los atributos de las clases base no pueden compartirse y si
 # # se comparten deben tener la misma definicion
 # def check_valid_attributes_between_base_classes(

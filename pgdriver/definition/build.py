@@ -2,14 +2,19 @@ from pgdriver.adapt.pydantic import\
     PGBaseModel
 from abc import\
     ABC
+from typing import\
+    Optional
 from enum import\
     EnumType
 from pydantic.dataclasses import\
     dataclass
-from pgdriver.definition.tools.metadata import\
+from pgdriver.definition.metadata import\
     PGFKUpdateAction,\
     PGFKDeleteAction,\
     PGIndexType
+from pgdriver.definition.metadata import\
+    pg_comment_meta,\
+    pg_check_meta
 
 
 class pg_builtin(type):
@@ -58,3 +63,24 @@ class pg_unique_index:
 class pg_primary_key:
     pk_name: str
     pk_column_names: tuple[str]
+
+
+@dataclass(kw_only=True)
+class pg_column:
+    col_name: str
+    col_type: str
+    col_check: Optional[pg_check_meta]
+    col_comment: Optional[pg_comment_meta]
+
+
+@dataclass(kw_only=True)
+class pg_attribute:
+    attr_name: str
+    attr_type: str
+    attr_check: Optional[pg_check_meta]
+
+
+@dataclass(kw_only=True)
+class pg_check:
+    ck_field_name: str
+    ck_meta: pg_check_meta

@@ -7,7 +7,10 @@ from typing import\
     Any,\
     Optional,\
     Generic,\
-    TypeVar
+    TypeVar,\
+    get_args,\
+    Callable,\
+    ContextManager
 from typing_extensions import\
     Self
 from enum import\
@@ -17,9 +20,8 @@ import pprint
 from heapq import\
     heappush,\
     heappop
-
-
-# para domains cambia un poco porque entra por metaclase, con lo cual issubclass va a fallar
+from contextlib import\
+    contextmanager
 
 
 class FlowComponentException(Exception):
@@ -41,11 +43,23 @@ class FlowAccumulatorErrorsPolicy(Enum):
 T = TypeVar('T')
 
 
-class FlowAccumulator:
+class HandlesWorkPath:
+    def __init__(self):
+        self._work_path = ''
+
+    @contextmanager
+    def at_work_path(self, name) -> ContextManager[Self]:
+        old_path: str = self._work_path
+        self._work_path = name if self._work_path == '' else f'{self._work_path}.{name}'
+        yield self
+        self._work_path = old_path
+
+
+class FlowAccumulator(HandlesWorkPath):
     def __init__(self, on_type: type) -> None:
+        super().__init__(self)
         self._definition = dict[Any, Any]()
         self._on_type = on_type
-        self._errors = dict[str, dict[str, FlowComponentException]]()
 
     def __str__(self):
         errors: list[str] = []
@@ -61,10 +75,6 @@ class FlowAccumulator:
         return f'Flow accumulator for type {self._on_type}:\nDefinition:\n{definition}\nErrors:\n\t{error_str}'
 
     @property
-    def definition(self) -> dict[Any, Any]:
-        return self._definition
-
-    @property
     def errors(self) -> dict[Any, Any]:
         return self._errors
 
@@ -75,10 +85,37 @@ class FlowAccumulator:
     def has_errors(self):
         return len(self._errors.keys()) != 0
 
+    def get_definition(self, name: str, abspath: Optional[str] = None) -> Optional[Any]:
+        if abspath is None:
+            return self._definition[name]
+        dic: dict[str, Any] = self._definition
+        path: list[str] = self._work_path.split('.')
+        for ix in range(0, len(path)):
+            at: str = path[ix]
+            if at not in dic:
+                return None
+            if not isinstance(dic[at],  dict):
+                err_path: str = '.'.join(path[0:ix]) + at
+                raise Exception(f'Accessing invalid level at definition flow: {err_path}')
+            dic = dic[at]
+        dic: dict[str, Any] = self._go_to_path(abspath)
+        return None if name not in dic else dic[name]
+
     def add_definition(self, name: str, definition: Any) -> Self:
-        if name in self._definition:
-            raise Exception(f'Existing definition for {name} in accumulator.')
-        self._definition[name] = definition
+        dic: dict[str, Any] = self._definition
+        path: list[str] = self._work_path.split('.')
+        for ix in range(0, len(path)):
+            at: str = path[ix]
+            if at in dic:
+                if type(dic[at]) != dict:
+                    err_path: str = '.'.join(path[0:ix]) + at
+                    raise Exception(f'Invalid level detected at definition flow: {err_path}')
+                dic = dic[at]
+            else:
+                dic[at] = {}
+        if name in dic:
+            raise Exception('Cant modify existing key')
+        dic[name] = definition
         return self
 
     def add_exception(self, flow_name: str, exception: FlowComponentException) -> Self:
@@ -97,8 +134,8 @@ class FlowComponent(ABC, Generic[T]):
     def name(self) -> str:
         return self._name
 
-    def set_accumulator_policy(self, accumulator_errors_policy: FlowAccumulatorErrorsPolicy) -> Self:
-        self._accumulator_errors_policy = accumulator_errors_policy
+    def critical(self) -> Self:
+        self._accumulator_errors_policy = FlowAccumulatorErrorsPolicy.END_FLOW
         return self
 
     def initialize(self, accumulator: FlowAccumulator) -> None:
@@ -111,12 +148,15 @@ class FlowComponent(ABC, Generic[T]):
     def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
         pass
 
+    @abstractmethod
+    def get_dependencies(self) -> tuple[str]:
+        pass
 
-# el definition flow es un heap tambien
-class DefinitionFlow(Generic[T]):
-    def __init__(self, name: str, target: type[T]) -> None:
+
+class DefinitionFlow(HandlesWorkPath, Generic[T]):
+    def __init__(self, name: str) -> None:
         self._name = name
-        self._target = target
+        self._target = get_args(self.__orig_class__)[0]
         self._components: OrderedDict[str, FlowComponent[T]] = OrderedDict()
 
     @property
@@ -131,14 +171,9 @@ class DefinitionFlow(Generic[T]):
         return f'FlowComponent(target={self.target})'
 
     def __lt__(self, other: 'DefinitionFlow') -> bool:
-        return issubclass(other.target, self.target)
+        return self.is_subordinate(other)
 
-    def set_critical_component(self, component_name: str) -> None:
-        if component_name not in self._components:
-            raise Exception('Critical component not defined.')
-        self._components[component_name].set_accumulator_policy(FlowAccumulatorErrorsPolicy.END_FLOW)
-
-    def register_component(self, component: FlowComponent[T]) -> None:
+    def register(self, component: FlowComponent[T]) -> None:
         if component.name in self._components:
             raise Exception(f'Element of type {type(component)} already declared')
         existing_elem_of_type: Optional[str] = None
@@ -148,20 +183,49 @@ class DefinitionFlow(Generic[T]):
                 break
         if existing_elem_of_type is not None:
             raise Exception(f'Component of type {type(component)} already declared in flow {self._name} with name {existing_elem_of_type}')
+        dependencies: set[str] = set(component.get_dependencies())
+        existing: set[str] = set(self._components.keys())
+        if existing.intersection(dependencies).count() != dependencies.count() and dependencies.count() != 0:
+            missing: str = ", ".join(dependencies.difference(existing))
+            raise Exception(f'Dependencies not met for component "{component.name}", missing: {missing}')
+        component.accumulator_path = self._work_path
         self._components[component.name] = component
         self._components.move_to_end(component.name)
 
     def execute(self, on_type: type[T], accumulator: FlowAccumulator) -> None:
         if not issubclass(on_type, self._target):
             raise Exception(f'Type {on_type} must be a subclass of {self.target} to be executed in flow {self.name}')
-        for name, component in self._components.items():
-            try:
-                component.initialize(accumulator)
-                component.execute(on_type, accumulator)
-            except FlowComponentException as e:
-                accumulator.add_exception(self._name, e)
-            except FlowEndException as e:
-                raise e
+        i: int = 0
+        j: int = 0
+        components: list[FlowComponent[T]] = self._components.values()
+        while i < len(components):
+            j = i
+            last_accumulator_path: str = components[j]. accumulator_path
+            with accumulator.at_work_path(last_accumulator_path) as acc:
+                while j < len(components) and last_accumulator_path == components[j].accumulator_path:
+                    try:
+                        components[j].initialize(acc)
+                        components[j].execute(on_type, acc)
+                    except FlowComponentException as e:
+                        accumulator.add_exception(self._name, e)
+                    except FlowEndException as e:
+                        raise e
+                    j += 1
+            i = j
+
+    @abstractmethod
+    def is_subordinate(self, other: 'DefinitionFlow'):
+        pass
+
+
+class TypeSubclassDefinitionFlow(DefinitionFlow[T]):
+    def is_subordinate(self, other: 'DefinitionFlow'):
+        return issubclass(self.target, other.target)
+
+
+class TypeInstanceDefinitionFlow(DefinitionFlow[T]):
+    def is_subordinate(self, other: 'DefinitionFlow'):
+        return isinstance(self.target, other.target)
 
 
 # se asocia el definition context del type con el definition context del type padre
@@ -171,12 +235,12 @@ class DefinitionFlowRegistry:
         self._name = name
         self._flows: dict[type, DefinitionFlow] = {}
 
-    def register_definition_flow(self, flow: DefinitionFlow) -> None:
+    def register(self, flow: DefinitionFlow) -> None:
         if flow.target in self._flows:
             raise Exception(f'Context registry: {flow.target} definition flow already defined: {self[flow.target]._name}')
         self._flows[flow.target] = flow
 
-    def execute_definition_flow(self, on_type: type) -> dict[Any, Any]:
+    def execute_flow(self, on_type: type) -> dict[Any, Any]:
         execute_flows: list[DefinitionFlow] = []
         accumulator: FlowAccumulator = FlowAccumulator(on_type)
         for flow_target in self._flows:

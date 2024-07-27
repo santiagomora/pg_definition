@@ -1,31 +1,32 @@
-from pgdriver.definition.tools.metadata import\
+from pgdriver.definition.metadata import\
     pg_comment_meta,\
     pg_check_meta
 from typing import\
     Callable
-from typing import\
-    Any
-from pydantic_core import\
-    core_schema,\
-    SchemaValidator
-from pydantic.annotated_handlers import\
-    GetCoreSchemaHandler
-from pgdriver.definition.tools.inspection import\
-    extract_by_instance_type_from_inherited_classes
-from pgdriver.definition.tools import\
+from pgdriver.definition.build import\
     pg_domain,\
     pg_table,\
     pg_unique_index,\
     pg_foreign_key,\
     pg_index,\
     pg_primary_key
+from pgdriver.definition.flows import\
+    FlowAccumulator
+from pgdriver.definition.registry import\
+    pgdriver_definition_flow_registry
+from pgdriver.definition.inspection import\
+    extract_by_instance_type_from_inherited_classes
 
 
 def with_pg_comment(comment: pg_comment_meta) -> Callable[type, type]:
     """
     Comments can be inserted into composites, domains, or enums
     """
+
     def inject_comment(wrapped_cls: type) -> type:
+        if isinstance(wrapped_cls, pg_table):
+            raise Exception('Check decorators cant be appliend on table.')
+
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
         @classmethod
@@ -41,7 +42,11 @@ def with_pg_check(check: pg_check_meta) -> Callable[type, type]:
     """
     Checks can be inserted into domains or composite types
     """
+
     def inject_check(wrapped_cls: type) -> type:
+        if not isinstance(wrapped_cls, pg_domain):
+            raise Exception('Check decorators can only be applied on domains.')
+
         clsname: str = wrapped_cls.__name__
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
         clsdict = dict(wrapped_cls.__dict__)
@@ -65,26 +70,7 @@ def with_pg_check(check: pg_check_meta) -> Callable[type, type]:
     return inject_check
 
 
-def with_schema(schema: core_schema.CoreSchema) -> Callable[type, type]:
-    def inject_schema(wrapped_cls: type) -> type:
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
-
-        def __new__(cls, *args, **kwargs):
-            validator: SchemaValidator = SchemaValidator(schema)
-            validator.validate_python(*args)
-            return bases[0].__new__(bases[0], *args, **kwargs)
-
-        @classmethod
-        def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-            return schema
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__new__': __new__,
-            '__get_pydantic_core_schema__': __get_pydantic_core_schema__})
-    return inject_schema
-
-
-def is_domain(cls: type):
+def as_domain(cls: type):
     bases: tuple[type] = extract_by_instance_type_from_inherited_classes(cls)
     return pg_domain(cls.__name__, bases, dict(cls.__dict__))
 
@@ -92,7 +78,7 @@ def is_domain(cls: type):
 def with_pg_foreign_key(fk: pg_foreign_key) -> Callable[type, type]:
     def inject_fk(wrapped_cls: type) -> type:
         if not issubclass(wrapped_cls, pg_table):
-            raise Exception('Class {wrapped_cls.__name__} must be a subclass of pg_table to decorate with "with_pg_foreign_key".')
+            raise Exception(f'Class {wrapped_cls.__name__} must be a subclass of pg_table to decorate with "with_pg_foreign_key".')
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
         @classmethod
@@ -107,7 +93,7 @@ def with_pg_foreign_key(fk: pg_foreign_key) -> Callable[type, type]:
 def with_pg_index(ix: pg_index) -> Callable[type, type]:
     def inject_ix(wrapped_cls: type) -> type:
         if not issubclass(wrapped_cls, pg_table):
-            raise Exception('Class {wrapped_cls.__name__} must be a subclass of pg_table to decorate with "with_pg_index".')
+            raise Exception(f'Class {wrapped_cls.__name__} must be a subclass of pg_table to decorate with "with_pg_index".')
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
         @classmethod
@@ -123,6 +109,7 @@ def with_pg_unique_index(uix: pg_unique_index) -> Callable[type, type]:
     def inject_uix(wrapped_cls: type) -> type:
         if not issubclass(wrapped_cls, pg_table):
             raise Exception(f'Class {wrapped_cls.__name__} must be a subclass of pg_table to decorate with "with_pg_unique_index".')
+
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
         @classmethod
@@ -138,6 +125,7 @@ def with_pg_primary_key(pk: pg_primary_key) -> Callable[type, type]:
     def inject_pk(wrapped_cls: type) -> type:
         if not issubclass(wrapped_cls, pg_table):
             raise Exception(f'Class {wrapped_cls.__name__} must be a subclass of pg_table to decorate with "with_pg_primary_key".')
+
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
         @classmethod
@@ -147,3 +135,9 @@ def with_pg_primary_key(pk: pg_primary_key) -> Callable[type, type]:
         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
             '__pg_get_primary_key': __pg_get_primary_key})
     return inject_pk
+
+
+def valid_by_definition_flow(wrapped_cls: type):
+    accumulator: FlowAccumulator = pgdriver_definition_flow_registry.execute_flow(wrapped_cls)
+    bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+    return type(wrapped_cls.__name__, bases, accumulator.get_definition('final'))

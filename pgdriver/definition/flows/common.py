@@ -2,15 +2,20 @@ from pgdriver.definition.base import\
     FlowComponent,\
     FlowAccumulator,\
     FlowComponentException
-from pgdriver.definition.types.builtin import\
-    pg_builtin
-from pgdriver.definition.tools.inspection import\
-    get_field_classified_metadata_appearances
+from pgdriver.definition.inspection import\
+    get_field_classified_metadata_appearances,\
+    extract_by_instance_type_from_inherited_classes
 from pgdriver.definition.flows import\
     T
-from pgdriver.definition.tools.metadata import\
+from pgdriver.definition.build import\
     pg_comment_meta,\
-    pg_check_meta
+    pg_check_meta,\
+    pg_check
+from typing import\
+    get_args,\
+    Any
+from pgdriver.definition.inspection import\
+    extract_by_instance_type_from_model_fields_info
 
 
 class CommonValidateRestrictedMetadataTypesComponent(FlowComponent[T]):
@@ -57,30 +62,6 @@ class CommonValidateUniqueMetadataTypesComponent(FlowComponent[T]):
             raise FlowComponentException(self.name, errors)
 
 
-class CommonValidateBaseTypesComponent(FlowComponent[T]):
-    """
-    We must be sure that base type of fields will have a postgres representation
-    """
-
-    def __init__(self, required: list[type]):
-        super().__init__('validate-required-metadata-types-component')
-        self._required = required
-
-    def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
-        # mira el type base del campo y valida que este entre los requeridos
-        errors: list[str] = []
-        super_types: str = ', '.join([e.__name__ for e in self._required])
-        for name, info in target.model_fields.items():
-            is_subclass_of_required: bool = False
-            for required in self._required:
-                if issubclass(info.annotation, required) or isinstance(info.annotation, pg_builtin):
-                    is_subclass_of_required = True
-            if not is_subclass_of_required:
-                errors.append(f'Field {name} must be a subtype of {super_types}')
-        if len(errors) > 0:
-            raise FlowComponentException(self.name, errors)
-
-
 class CommonExtractCheckDefinitionComponent(FlowComponent[T]):
     """
     Extract check constraints
@@ -108,17 +89,92 @@ class CommonExtractCommentDefinitionComponent(FlowComponent[T]):
         attr_name: str = f'_{target.__name__}__pg_comment_meta'
         if hasattr(target, attr_name):
             comment: pg_comment_meta = getattr(target, attr_name)()
-            accumulator.add_definition('comment', comment.value)
+            accumulator.add_definition('comment', comment)
 
 
-# los types pueden heredar unicamente del type base
-class CommonValidateSingleInheritedClassComponent:
+class CommonValidateSingleInheritedClassComponent(FlowComponent[T]):
+    """
+    Types can only inherit from base_class
+    """
+
     def __init__(self):
         super().__init__('extract-comment-definition-component')
+        self._base_class = get_args(self.__orig_class__)[0]
 
     def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
-        attr_name: str = f'_{target.__name__}__pg_comment_meta'
-        if hasattr(target, attr_name):
-            comment: pg_comment_meta = getattr(target, attr_name)()
-            accumulator.add_definition('comment', comment.value)
-    pass
+        base_classes: tuple[type] = extract_by_instance_type_from_inherited_classes(target)
+        if len(base_classes) > 1:
+            raise FlowComponentException(self.name, f'Type {target.__name__} can only have one base class: {self._base_class.__name__}')
+        base_class: type = base_classes[0]
+        if base_class != self._base_class:
+            raise FlowComponentException(self.name, f'Type {target.__name__} base class must be: {self._base_class.__name__}')
+
+
+class CommonValidateFieldsBaseTypeComponent(FlowComponent[T]):
+    """
+    We must be sure that base type of fields will have a postgres representation
+    """
+
+    def __init__(self, type_subclass: list[type], type_instance: list[type]):
+        super().__init__('validate-base-type-component')
+        self._type_subclass = type_subclass
+        self._type_instance = type_instance
+
+    def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
+        # mira el type base del campo y valida que este entre los requeridos
+        errors: list[str] = []
+        super_types: str = ', '.join([e.__name__ for e in self._required])
+        for name, info in target.model_fields.items():
+            is_subclass_of_required: bool = False
+            for required in self._type_subclass:
+                if issubclass(info.annotation, required):
+                    is_subclass_of_required = True
+            is_instance_of_required: bool = False
+            if not is_subclass_of_required:
+                for required in self._type_instance:
+                    if isinstance(info.annotation, required):
+                        is_instance_of_required = True
+            if not (is_subclass_of_required or is_instance_of_required):
+                errors.append(f'Field {name} type must be an instance of {super_types}')
+        if len(errors) > 0:
+            raise FlowComponentException(self.name, errors)
+
+
+class CommonExtractCheckConstraintsComponent(FlowComponent[T]):
+    """
+    Extracts check constraint from fields
+    """
+
+    def __init__(self):
+        super().__init__('extract-check-constraints-component')
+
+    def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
+        constraints: list[pg_check_meta] = extract_by_instance_type_from_model_fields_info(
+            target.model_fields,
+            pg_check_meta,
+            lambda field_name, ck: {
+                'ck_check_meta': ck,
+                'ck_field_name': field_name})
+        if len(constraints) > 0:
+            accumulator.add_definition('check_constraints', constraints)
+
+
+class CommonStoreCheckConstraintsComponent(FlowComponent[T]):
+    """
+    Stores check constraint extracted from fields
+    """
+
+    def __init__(self):
+        super().__init__('store-check-constraints-component')
+
+    def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
+        definition: list[dict[str, Any]] = accumulator.get_definition('check_constraints', 'extraction')
+        if definition is None:
+            return
+        cks: list[pg_check] = [pg_check(**ck) for ck in definition]
+
+        @classmethod
+        def __pg_get_check_constraints(cls) -> list[pg_check]:
+            return cks
+
+        accumulator.add_definition('__pg_get_check_constraints', __pg_get_check_constraints)
