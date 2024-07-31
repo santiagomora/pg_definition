@@ -22,17 +22,27 @@ from heapq import\
     heappop
 from contextlib import\
     contextmanager
+from pgdriver.definition.inspection import\
+    get_type_arguments
 
 
 class FlowComponentException(Exception):
     def __init__(self, name, error_list):
-        super().__init__(f'Error in component {name}')
+        Exception.__init__(self, ', '.join(error_list))
         self.error_list = error_list
         self.component_name = name
 
 
 class FlowEndException(Exception):
-    pass
+    def __init__(self, errors: dict[str, dict[str, FlowComponentException]]):
+        Exception.__init__(self, pprint.pformat(errors))
+        self._errors = errors
+
+    def get_error(self, flow_name: str, component_name: str) -> Optional[FlowComponentException]:
+        if flow_name in self._errors:
+            if component_name in self._errors[flow_name]:
+                return self._errors[flow_name][component_name]
+        return None
 
 
 class FlowAccumulatorErrorsPolicy(Enum):
@@ -57,25 +67,26 @@ class HandlesWorkPath:
 
 class FlowAccumulator(HandlesWorkPath):
     def __init__(self, on_type: type) -> None:
-        super().__init__(self)
+        HandlesWorkPath.__init__(self)
         self._definition = dict[Any, Any]()
+        self._errors: dict[str, dict[str, str]] = dict()
         self._on_type = on_type
 
-    def __str__(self):
-        errors: list[str] = []
-        for flow in self._errors:
-            errors.append(f'Errors in flow: {flow}')
-            cmp_errors: list[str] = []
-            for component in self._errors[flow]:
-                cmp_errors.append(f'\tErrors in component: {component}:')
-                cmp_errors += [f'\t\t{str(e)}' for e in self._errors[flow][component].error_list]
-            errors.append('\n\t'.join(cmp_errors))
-        definition: str = pprint.pformat(self._definition)
-        error_str: str = '\n\t'.join(errors)
-        return f'Flow accumulator for type {self._on_type}:\nDefinition:\n{definition}\nErrors:\n\t{error_str}'
+    # def __str__(self):
+    #     errors: list[str] = []
+    #     for flow in self._errors:
+    #         errors.append(f'Errors in flow: {flow}')
+    #         cmp_errors: list[str] = []
+    #         for component in self._errors[flow]:
+    #             cmp_errors.append(f'\tErrors in component: {component}:')
+    #             cmp_errors += [f'\t\t{str(e)}' for e in self._errors[flow][component].error_list]
+    #         errors.append('\n\t'.join(cmp_errors))
+    #     definition: str = pprint.pformat(self._definition)
+    #     error_str: str = '\n\t'.join(errors)
+    #     return f'Flow accumulator for type {self._on_type}:\nDefinition:\n{definition}\nErrors:\n\t{error_str}'
 
     @property
-    def errors(self) -> dict[Any, Any]:
+    def errors(self) -> dict[str, Any]:
         return self._errors
 
     def clear(self) -> None:
@@ -85,11 +96,13 @@ class FlowAccumulator(HandlesWorkPath):
     def has_errors(self):
         return len(self._errors.keys()) != 0
 
-    def get_definition(self, name: str, abspath: Optional[str] = None) -> Optional[Any]:
-        if abspath is None:
-            return self._definition[name]
+    def get_definition(self, name: Optional[str] = None, abspath: Optional[str] = None) -> Optional[Any]:
         dic: dict[str, Any] = self._definition
-        path: list[str] = self._work_path.split('.')
+        if name is None:
+            return dic
+        if abspath is None:
+            return None if name not in dic else dic[name]
+        path: list[str] = abspath.split('.')
         for ix in range(0, len(path)):
             at: str = path[ix]
             if at not in dic:
@@ -98,10 +111,10 @@ class FlowAccumulator(HandlesWorkPath):
                 err_path: str = '.'.join(path[0:ix]) + at
                 raise Exception(f'Accessing invalid level at definition flow: {err_path}')
             dic = dic[at]
-        dic: dict[str, Any] = self._go_to_path(abspath)
         return None if name not in dic else dic[name]
 
     def add_definition(self, name: str, definition: Any) -> Self:
+        # print(name, self._work_path)
         dic: dict[str, Any] = self._definition
         path: list[str] = self._work_path.split('.')
         for ix in range(0, len(path)):
@@ -110,9 +123,9 @@ class FlowAccumulator(HandlesWorkPath):
                 if type(dic[at]) != dict:
                     err_path: str = '.'.join(path[0:ix]) + at
                     raise Exception(f'Invalid level detected at definition flow: {err_path}')
-                dic = dic[at]
             else:
                 dic[at] = {}
+            dic = dic[at]
         if name in dic:
             raise Exception('Cant modify existing key')
         dic[name] = definition
@@ -129,6 +142,7 @@ class FlowComponent(ABC, Generic[T]):
     def __init__(self, name: str) -> None:
         self._name = name
         self._accumulator_errors_policy = FlowAccumulatorErrorsPolicy.LOG_INFO
+        self._base_class = get_type_arguments(self)[0]
 
     @property
     def name(self) -> str:
@@ -142,21 +156,21 @@ class FlowComponent(ABC, Generic[T]):
         if not accumulator.has_errors():
             return
         if self._accumulator_errors_policy == FlowAccumulatorErrorsPolicy.END_FLOW:
-            raise FlowEndException(f'Errors detected when initializing component "{self._name}". Accumulator:\n{str(accumulator)}')
+            raise FlowEndException(accumulator.errors)
+
+    def get_dependencies(self) -> tuple[str]:
+        return tuple()
 
     @abstractmethod
     def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
         pass
 
-    @abstractmethod
-    def get_dependencies(self) -> tuple[str]:
-        pass
-
 
 class DefinitionFlow(HandlesWorkPath, Generic[T]):
     def __init__(self, name: str) -> None:
+        HandlesWorkPath.__init__(self)
         self._name = name
-        self._target = get_args(self.__orig_class__)[0]
+        self._target = get_type_arguments(self)[0]
         self._components: OrderedDict[str, FlowComponent[T]] = OrderedDict()
 
     @property
@@ -185,7 +199,7 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
             raise Exception(f'Component of type {type(component)} already declared in flow {self._name} with name {existing_elem_of_type}')
         dependencies: set[str] = set(component.get_dependencies())
         existing: set[str] = set(self._components.keys())
-        if existing.intersection(dependencies).count() != dependencies.count() and dependencies.count() != 0:
+        if len(existing.intersection(dependencies)) != len(dependencies) and len(dependencies) != 0:
             missing: str = ", ".join(dependencies.difference(existing))
             raise Exception(f'Dependencies not met for component "{component.name}", missing: {missing}')
         component.accumulator_path = self._work_path
@@ -197,12 +211,13 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
             raise Exception(f'Type {on_type} must be a subclass of {self.target} to be executed in flow {self.name}')
         i: int = 0
         j: int = 0
-        components: list[FlowComponent[T]] = self._components.values()
+        components: list[FlowComponent[T]] = [c for c in self._components.values()]
         while i < len(components):
             j = i
-            last_accumulator_path: str = components[j]. accumulator_path
+            last_accumulator_path: str = components[j].accumulator_path
             with accumulator.at_work_path(last_accumulator_path) as acc:
                 while j < len(components) and last_accumulator_path == components[j].accumulator_path:
+                    # print(j, components[j].name, last_accumulator_path)
                     try:
                         components[j].initialize(acc)
                         components[j].execute(on_type, acc)

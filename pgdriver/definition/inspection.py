@@ -3,7 +3,8 @@ from typing import\
     Optional,\
     Callable,\
     KeysView,\
-    Generator
+    Generator,\
+    get_args
 from dataclasses import\
     dataclass
 from pydantic.fields import\
@@ -14,6 +15,8 @@ from collections import\
 import inspect
 from ordered_set import\
     OrderedSet
+from pydantic import\
+    BaseModel
 
 
 # Merge strategy:
@@ -148,16 +151,28 @@ def extract_first_instance_from_field_metadata(
     instance_type: type
 ) -> Any:
     for meta in extract_by_instance_type_from_field_info(info, instance_type):
-        return meta
-    return None
+        yield meta
+
+
+# extract fields excluding inherited fields
+def extract_definition_fields(
+    cls: type,
+    exclude_fields_from: type
+) -> Generator[tuple[str, FieldInfo], None, None]:
+    inherited_fields: set[str] = set(cls.model_fields.keys())
+    for icls in extract_by_instance_type_from_inherited_classes(cls, exclude_fields_from):
+        inherited_fields = inherited_fields.intersection(set(icls.model_fields.keys()))
+    for field_name in inherited_fields:
+        yield (field_name, cls.model_fields[field_name])
 
 
 def extract_by_instance_type_from_model_fields_info(
-    fields: dict[str, FieldInfo],
+    cls: type[BaseModel],
     instance_type: type,
+    exclude_fields_from: type[BaseModel] = None,
     conversion_fn: Optional[Callable[[Any], dict[str, Any]]] = None
 ) -> Generator[dict[str, Any], None, None]:
-    for field_name, field_info in fields.items():
+    for field_name, field_info in extract_definition_fields(cls, exclude_fields_from):
         for meta in extract_by_instance_type_from_field_info(field_info, instance_type):
             if conversion_fn is not None:
                 yield conversion_fn(field_name, meta)
@@ -251,13 +266,28 @@ def ordered_dict_accumulator(
     return accumulator
 
 
-def has_private_classmethod(cls: type, methodname: str) -> Any:
-    return hasattr(cls, f'_{cls.__name__}__{methodname}')
+def has_classmethod(cls: type, methodname: str) -> bool:
+    attr_name = methodname
+    if methodname.startswith('__'):
+        attr_name = f'_{cls.__name__}__{methodname}'
+    if not hasattr(cls, attr_name):
+        return False
+    attr = getattr(cls, attr_name)
+    return callable(attr)
 
 
-def execute_private_classmethod(cls: type, methodname: str, *args, **kwargs) -> Any:
+def execute_classmethod(cls: type, methodname: str, *args, **kwargs) -> Any:
+    if not has_classmethod(cls, methodname):
+        raise Exception(f'Method {classmethod} not defined for {cls.__name__}')
     method = getattr(cls, f'_{cls.__name__}__{methodname}')
     return method(*args, **kwargs)
+
+
+def get_type_arguments(cls: type) -> tuple[type]:
+    arg_types: set[type] = set()
+    for base in cls.__orig_bases__:
+        arg_types = arg_types.union(set(get_args(base)))
+    return tuple(arg_types)
 
 
 # # * los atributos de las clases base no pueden compartirse y si

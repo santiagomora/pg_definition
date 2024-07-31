@@ -6,63 +6,55 @@ from pgdriver.definition.flows import\
 from typing import\
     Any,\
     Optional
-from pgdriver.flows.common import\
+from pgdriver.definition.flows.common import\
     CommonValidateSingleInheritedClassComponent,\
     CommonValidateRestrictedMetadataTypesComponent,\
     CommonValidateUniqueMetadataTypesComponent,\
     CommonValidateFieldsBaseTypeComponent,\
-    CommonExtractCommentDefinitionComponent,\
     CommonExtractCheckConstraintsComponent,\
     CommonStoreCheckConstraintsComponent
 from pgdriver.definition.inspection import\
     extract_first_instance_from_field_metadata
-from pgdriver.definition.metadata import\
-    pg_check_meta
 from pgdriver.definition.build import\
     pg_attribute,\
     pg_domain,\
     pg_composite,\
     pg_enum,\
-    pg_builtin
+    pg_builtin,\
+    pg_check_meta
 
 
 class CompositeValidateSingleInheritedClassComponent(CommonValidateSingleInheritedClassComponent[pg_composite]):
-    def get_dependencies(self) -> tuple[str]:
-        return tuple()
+    pass
 
 
 class CompositeValidateRestrictedMetadataTypesComponent(CommonValidateRestrictedMetadataTypesComponent[pg_composite]):
-    def get_dependencies(self) -> tuple[str]:
-        return tuple()
+    pass
 
 
 class CompositeValidateUniqueMetadataTypesComponent(CommonValidateUniqueMetadataTypesComponent[pg_composite]):
-    def get_dependencies(self) -> tuple[str]:
-        return tuple()
+    pass
 
 
 class CompositeValidateFieldsBaseTypeComponent(CommonValidateFieldsBaseTypeComponent[pg_composite]):
+    pass
+
+
+class CompositeDependsOnValidationComponents:
     def get_dependencies(self) -> tuple[str]:
-        return tuple()
+        return ('validate-single-inherited-class-component',
+                'validate-restricted-metadata-types-component',
+                'validate-unique-metadata-types-component',
+                'validate-fields-base-type-component')
 
 
-class CompositeExtractCommentDefinitionComponent(CommonExtractCommentDefinitionComponent[pg_composite]):
-    def get_dependencies(self) -> tuple[str]:
-        return tuple('validate-single-inherited-class-component',
-                     'validate-restricted-metadata-types-component',
-                     'validate-unique-metadata-types-component',
-                     'validate-fields-base-type-component')
+class CompositeExtractCheckDefinitionComponent(CommonExtractCheckConstraintsComponent[pg_composite],
+                                               CompositeDependsOnValidationComponents):
+    pass
 
 
-class CompositeExtractCheckDefinitionComponent(CommonExtractCheckConstraintsComponent[pg_composite]):
-    def get_dependencies(self) -> tuple[str]:
-        return tuple('validate-single-inherited-class-component',
-                     'validate-restricted-metadata-types-component',
-                     'validate-unique-metadata-types-component',
-                     'validate-fields-base-type-component')
-
-
-class CompositeExtractAttributesDefinitionComponent(FlowComponent[pg_composite]):
+class CompositeExtractAttributesDefinitionComponent(FlowComponent[pg_composite],
+                                                    CompositeDependsOnValidationComponents):
     """
     Extract composite attributes
     """
@@ -83,13 +75,7 @@ class CompositeExtractAttributesDefinitionComponent(FlowComponent[pg_composite])
             attributes.append(attr_data)
         if len(attributes) > 0:
             accumulator.add_definition('columns', attributes)
-        raise FlowComponentException(self.name, f'Class {target.__name__} must declare attributes.')
-
-    def get_dependencies(self) -> tuple[str]:
-        return tuple('validate-single-inherited-class-component',
-                     'validate-restricted-metadata-types-component',
-                     'validate-unique-metadata-types-component',
-                     'validate-fields-base-type-component')
+        raise FlowComponentException(self.name, f'Class {target} must declare attributes.')
 
 
 class CompositeStoreAttributesDefinitionComponent(FlowComponent[pg_composite]):
@@ -103,18 +89,18 @@ class CompositeStoreAttributesDefinitionComponent(FlowComponent[pg_composite]):
         attrs: list[pg_attribute] = [pg_attribute(**attr) for attr in definition]
 
         @classmethod
-        def __pg_get_attributes(cls) -> list[pg_attribute]:
+        def __pg_attributes(cls) -> list[pg_attribute]:
             return attrs
 
-        accumulator.add_definition('__pg_get_attributes', __pg_get_attributes)
+        accumulator.add_definition('__pg_attributes', __pg_attributes)
 
     def get_dependencies(self) -> tuple[str]:
-        return tuple('extract-attributes-definition-component')
+        return ('extract-attributes-definition-component', )
 
 
 class CompositeStoreCheckDefinitionComponent(CommonStoreCheckConstraintsComponent[pg_composite]):
     def get_dependencies(self) -> tuple[str]:
-        return tuple('extract-check-definition-component')
+        return ('extract-check-constraints-component', )
 
 
 class CompositeDefinitionFlow(TypeSubclassDefinitionFlow[pg_composite]):
@@ -124,34 +110,24 @@ class CompositeDefinitionFlow(TypeSubclassDefinitionFlow[pg_composite]):
 
 pgcomposite_definition_flow: CompositeDefinitionFlow = CompositeDefinitionFlow()
 
-with pgcomposite_definition_flow.at_path('validation') as flow:
+with pgcomposite_definition_flow.at_work_path('validation') as flow:
     flow.register(CompositeValidateSingleInheritedClassComponent())
     flow.register(CompositeValidateRestrictedMetadataTypesComponent([
         pg_check_meta]))
     flow.register(CompositeValidateUniqueMetadataTypesComponent([
         pg_check_meta]))
-    flow.register(CompositeValidateFieldsBaseTypeComponent([
-        pg_composite,
-        pg_enum], [
-        pg_builtin,
-        pg_domain]))
-    flow.register(CompositeValidateSingleInheritedClassComponent())
-    flow.register(CompositeValidateRestrictedMetadataTypesComponent([
-        pg_check_meta]))
-    flow.register(CompositeValidateUniqueMetadataTypesComponent([
-        pg_check_meta]))
-    flow.register(CompositeValidateFieldsBaseTypeComponent([
-        pg_composite,
-        pg_enum], [
+    flow.register(CompositeValidateFieldsBaseTypeComponent(type_subclass=[
+        pg_enum,
+        pg_composite],
+        type_instance=[
         pg_builtin,
         pg_domain]))
 
-with pgcomposite_definition_flow.at_path('extraction') as flow:
-    flow.register(CompositeExtractCommentDefinitionComponent().critical())
-    flow.register(CompositeExtractCheckDefinitionComponent())
+with pgcomposite_definition_flow.at_work_path('extraction') as flow:
+    flow.register(CompositeExtractCheckDefinitionComponent().critical())
     flow.register(CompositeExtractAttributesDefinitionComponent())
 
-with pgcomposite_definition_flow.at_path('final') as flow:
+with pgcomposite_definition_flow.at_work_path('final') as flow:
     flow.register(CompositeStoreAttributesDefinitionComponent().critical())
     flow.register(CompositeStoreCheckDefinitionComponent())
 
