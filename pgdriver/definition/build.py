@@ -27,6 +27,8 @@ from pydantic_core import\
 from pydantic import\
     GetCoreSchemaHandler,\
     ValidationInfo
+from pydantic.fields import\
+    FieldInfo
 from pydantic import\
     BaseModel
 from pydantic import\
@@ -38,16 +40,16 @@ from datetime import\
     time,\
     date
 from pgdriver.definition.inspection import\
-    extract_by_instance_type_from_inherited_classes
+    extract_by_instance_type_from_inherited_classes,\
+    is_optional,\
+    extract_definition_fields
 from numbers import\
     Number
+from typing_extensions import\
+    Self
 
 
 class pg_builtin(type):
-    pass
-
-
-class pg_composite(PGBaseModel, ABC):
     pass
 
 
@@ -55,7 +57,7 @@ class pg_domain(pg_builtin):
     pass
 
 
-class pg_table(PGBaseModel, ABC):
+class pg_sequence(pg_builtin):
     pass
 
 
@@ -63,12 +65,20 @@ class pg_enum(EnumType):
     pass
 
 
-def as_builtin(cls: type):
+class pg_composite(PGBaseModel, ABC):
+    pass
+
+
+class pg_table(PGBaseModel, ABC):
+    pass
+
+
+def _as_builtin(cls: type):
     bases: tuple[type] = extract_by_instance_type_from_inherited_classes(cls)
     return pg_builtin(cls.__name__, bases, dict(cls.__dict__))
 
 
-def with_schema(schema: core_schema.CoreSchema) -> Callable[type, type]:
+def _with_schema(schema: core_schema.CoreSchema) -> Callable[type, type]:
     def inject_schema(wrapped_cls: type) -> type:
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
@@ -87,116 +97,122 @@ def with_schema(schema: core_schema.CoreSchema) -> Callable[type, type]:
     return inject_schema
 
 
-@as_builtin
-@with_schema(core_schema.int_schema(strict=True, le=0x7fffffff))
+@_as_builtin
+@_with_schema(core_schema.int_schema(strict=True, le=0x7fffffff, ge=-0x7fffffff))
 class pg_int(int):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.int_schema(strict=True))
+@_as_builtin
+@_with_schema(core_schema.int_schema(strict=True))
 class pg_bigint(int):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.json_schema())
+@_as_builtin
+@_with_schema(core_schema.int_schema(strict=True, le=0x7fff, ge=-0x7fff))
+class pg_smallint(int):
+    pass
+
+
+@_as_builtin
+@_with_schema(core_schema.json_schema())
 class pg_json(Json):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.str_schema(strict=True))
+@_as_builtin
+@_with_schema(core_schema.str_schema(strict=True))
 class pg_text(str):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.float_schema(strict=True))
-class pg_float(float):
+@_as_builtin
+@_with_schema(core_schema.float_schema(strict=True))
+class pg_double(float):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.bytes_schema(strict=True))
+@_as_builtin
+@_with_schema(core_schema.bytes_schema(strict=True))
 class pg_bytes(bytes):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.datetime_schema(strict=True, tz_constraint='naive'))
+@_as_builtin
+@_with_schema(core_schema.datetime_schema(strict=True, tz_constraint='naive'))
 class pg_timestamp(datetime):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.datetime_schema(strict=True, tz_constraint='naive', now_op="past"))
+@_as_builtin
+@_with_schema(core_schema.datetime_schema(strict=True, tz_constraint='naive', now_op="past"))
 class pg_past_timestamp(datetime):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.datetime_schema(strict=True, tz_constraint='naive', now_op="future"))
+@_as_builtin
+@_with_schema(core_schema.datetime_schema(strict=True, tz_constraint='naive', now_op="future"))
 class pg_future_timestamp(datetime):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.datetime_schema(strict=True, tz_constraint='aware'))
+@_as_builtin
+@_with_schema(core_schema.datetime_schema(strict=True, tz_constraint='aware'))
 class pg_timestamptz(datetime):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.datetime_schema(strict=True, tz_constraint='aware', now_op="past"))
+@_as_builtin
+@_with_schema(core_schema.datetime_schema(strict=True, tz_constraint='aware', now_op="past"))
 class pg_past_timetstampz(datetime):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.datetime_schema(strict=True, tz_constraint='aware', now_op="future"))
+@_as_builtin
+@_with_schema(core_schema.datetime_schema(strict=True, tz_constraint='aware', now_op="future"))
 class pg_future_timestamptz(datetime):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.time_schema(strict=True, tz_constraint='naive'))
+@_as_builtin
+@_with_schema(core_schema.time_schema(strict=True, tz_constraint='naive'))
 class pg_time(time):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.time_schema(strict=True, tz_constraint='aware'))
+@_as_builtin
+@_with_schema(core_schema.time_schema(strict=True, tz_constraint='aware'))
 class pg_timetz(time):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.date_schema(strict=True))
+@_as_builtin
+@_with_schema(core_schema.date_schema(strict=True))
 class pg_date(date):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.date_schema(strict=True, now_op="past"))
+@_as_builtin
+@_with_schema(core_schema.date_schema(strict=True, now_op="past"))
 class pg_past_date(date):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.date_schema(strict=True, now_op="future"))
+@_as_builtin
+@_with_schema(core_schema.date_schema(strict=True, now_op="future"))
 class pg_future_date(date):
     pass
 
 
-@as_builtin
-@with_schema(core_schema.bool_schema(strict=True))
+@_as_builtin
+@_with_schema(core_schema.bool_schema(strict=True))
 class pg_bool():
     pass
 
 
-@as_builtin
-@with_schema(core_schema.decimal_schema(strict=True))
+@_as_builtin
+@_with_schema(core_schema.decimal_schema(strict=True))
 class pg_decimal(Decimal):
     pass
 
@@ -205,7 +221,7 @@ type_compatibility: dict[type, type] = {
     pg_bigint: Number,
     pg_int: Number,
     pg_decimal: Number,
-    pg_float: Number,
+    pg_double: Number,
     pg_time: time,
     pg_timetz: time,
     pg_date: date,
@@ -501,7 +517,7 @@ class Specification(BaseModel, Generic[T]):
         if check_type not in type_compatibility:
             errors.append(f'Compatibility not configured for type {annotated_type!r}')
         if len(errors) > 0:
-            raise TypeError('Several errors detected on pg_check_meta definition: ' + ', '.join(errors))
+            raise TypeError('Several errors detected on pg_meta.check definition: ' + ', '.join(errors))
         annotated_compat: type = type_compatibility[annotated_type]
         check_compat: type = type_compatibility[check_type]
         return issubclass(annotated_compat, check_compat) or issubclass(check_compat, annotated_compat)
@@ -663,32 +679,6 @@ class attr_(Specification[T], Generic[T, V]):
         return self._spec.as_str(left_operand)
 
 
-@dataclass(kw_only=True)
-class pg_check_meta(Generic[T]):
-    predicate: Specification[T]
-    name: str
-
-    def __get_pydantic_core_schema__(
-        self,
-        source: Type[T],
-        handler: GetCoreSchemaHandler
-    ) -> core_schema.CoreSchema:
-        if self.predicate is None:
-            raise ValueError('Check predicate cannot be empty')
-        schema = handler(source)
-        # ignore class pg_check_meta[T] has no attribute __orig_class__ error
-        # raised by mypy
-        self.predicate.check_type(source, get_args(self.__orig_class__)[0])
-        return core_schema.with_info_after_validator_function(
-            function=self.validate,
-            schema=schema,
-            field_name=handler.field_name)
-
-    def validate(self, value: T, info: ValidationInfo) -> T:
-        self.predicate.check_value(value, info.data)
-        return value
-
-
 PGIndexType: TypeAlias = Literal['btree', 'hash', 'gin', 'brin', 'gist', 'spgist']
 
 
@@ -698,29 +688,145 @@ PGFKUpdateAction: TypeAlias = Literal['SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO
 PGFKDeleteAction: TypeAlias = Literal['SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO ACTION', 'CASCADE']
 
 
-@dataclass(kw_only=True)
-class pg_index_meta:
-    name: str
-    type: PGIndexType = 'btree'
+class pg_meta:
+    @dataclass
+    class index:
+        name: str
+        type: PGIndexType = 'btree'
 
+    @dataclass
+    class unique_index:
+        name: str
+        type: PGIndexType = 'btree'
 
-@dataclass(kw_only=True)
-class pg_unique_index_meta:
-    name: str
+    @dataclass
+    class primary_key:
+        name: str
 
+    @dataclass(kw_only=True)
+    class foreign_key:
+        name: str
+        other_class: type[pg_table]
+        other_class_column_name: str
+        on_update: PGFKUpdateAction = 'NO ACTION'
+        on_delete: PGFKDeleteAction = 'NO ACTION'
 
-@dataclass(kw_only=True)
-class pg_primary_key_meta:
-    name: str
+        def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+            errors: list[str] = []
+            if self.other_class_column_name not in self.other_class.model_fields:
+                errors.append(f'Foreign key column {self.other_class_column_name} must exist in {self.other_class} definition')
+            other_class_column: FieldInfo = self.other_class.model_fields[self.other_class_column_name]
+            handler: core_schema.CoreSchema = handler(source)
+            if other_class_column.annotation != source:
+                errors.append(f'Foreign key column {handler.field_name} type must match with {self.other_class_column_name} in {self.other_class} definition')
+            if len(errors) > 0:
+                raise TypeError(', '.join(errors))
+            # ignore class pg_meta.check[T] has no attribute __orig_class__ error
+            # raised by mypy
+            return handler
 
+    @dataclass
+    class comment:
+        content: str
 
-@dataclass(kw_only=True)
-class pg_foreign_key_meta:
-    name: str
-    other_class: type[Any]
-    other_class_column_name: str
-    on_update: PGFKUpdateAction = 'NO ACTION'
-    on_delete: PGFKDeleteAction = 'NO ACTION'
+    @dataclass(kw_only=True)
+    class check(Generic[T]):
+        predicate: Specification[T]
+        name: str
+
+        def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+            if self.predicate is None:
+                raise ValueError('Check predicate cannot be empty')
+            # if not isinstance(source, pg_table) and not isinstance(source, pg_composite):
+                # raise ValueError(f'Meta {source.__name__} must be used on a pg_table or a pg_composite instance field')
+            schema = handler(source)
+            # ignore class pg_meta.check[T] has no attribute __orig_class__ error
+            # raised by mypy
+            self.predicate.check_type(source, get_args(self.__orig_class__)[0])
+            return core_schema.with_info_after_validator_function(
+                function=self.validate,
+                schema=schema,
+                field_name=handler.field_name)
+
+        def validate(self, value: T, info: ValidationInfo) -> T:
+            self.predicate.check_value(value, info.data)
+            return value
+
+        def merge(self, other: list['check']) -> Self:
+            if len(other) <= 0:
+                return self
+            self.predicate = and_(self.predicate, *tuple(other))
+            return self
+
+    class default:
+        @dataclass
+        class value(Generic[T]):
+            content: T
+
+            def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+                base: type = get_args(self.__orig_class__)[0]
+                errors: list[str] = []
+                if not is_optional(source):
+                    errors.append('Annotated type must be optional')
+                if base not in get_args(source):
+                    errors.append('Base type must match annotated type')
+                if len(errors) > 0:
+                    raise TypeError(', '.join(errors))
+                # ignore class pg_meta.check[T] has no attribute __orig_class__ error
+                # raised by mypy
+                return core_schema.with_info_after_validator_function(
+                    function=self.validate,
+                    schema=handler(source),
+                    field_name=handler.field_name)
+
+            def validate(self, value: Optional[T], info: ValidationInfo) -> T:
+                if value is None:
+                    return self.content
+                return value
+
+            @staticmethod
+            def consistent_list(elems: list['pg_meta.default.value']) -> bool:
+                if len(elems) <= 0:
+                    return True
+                initial: pg_meta.default.value = elems[0]
+                consistent: bool = True
+                for elem in elems:
+                    consistent = consistent and elem.value == initial.value
+                return consistent
+
+        @dataclass
+        class nextval:
+            seq: pg_sequence
+
+            def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+                base_seq: type = self.seq.__bases__[0]
+                errors: list[str] = []
+                if is_optional(source):
+                    errors.append('Annotated type must not be optional')
+                if base_seq is not source:
+                    errors.append('Sequence type must match annotated type')
+                if len(errors) > 0:
+                    raise TypeError(', '.join(errors))
+                # ignore class pg_meta.check[T] has no attribute __orig_class__ error
+                # raised by mypy
+                return core_schema.with_info_after_validator_function(
+                    function=self.validate,
+                    schema=handler(source),
+                    field_name=handler.field_name)
+
+            def validate(self, value: Optional[T], info: ValidationInfo) -> T:
+                if value is None:
+                    raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
+
+            @staticmethod
+            def consistent_list(elems: list['pg_meta.default.nextval']):
+                if len(elems) <= 0:
+                    return True
+                initial: pg_meta.default.nexval = elems[0]
+                consistent: bool = True
+                for elem in elems:
+                    consistent = consistent and elem.seq.__name__ != initial.seq.__name__
+                return consistent
 
 
 @dataclass(kw_only=True)
@@ -752,42 +858,38 @@ class pg_primary_key:
     pk_column_name: tuple[str]
 
 
-@dataclass
-class pg_comment_meta:
-    value: str
-
-
 @dataclass(kw_only=True)
 class pg_column:
     col_name: str
     col_type: str
-    col_check: Optional[pg_check_meta] = None
-    col_comment: Optional[pg_comment_meta] = None
+    col_check: Optional[pg_meta.check] = None
+    col_comment: Optional[pg_meta.comment] = None
+    col_default: Optional[pg_meta.default.value | pg_meta.default.nextval]
 
 
 @dataclass(kw_only=True)
 class pg_attribute:
     attr_name: str
     attr_type: str
-    attr_check: Optional[pg_check_meta]
+    attr_check: Optional[pg_meta.check]
 
 
 @dataclass(kw_only=True)
 class pg_check:
     ck_field_name: str
-    ck_meta: pg_check_meta
+    ck_meta: pg_meta.check
 
 
-def with_pg_comment(comment: pg_comment_meta) -> Callable[type, type]:
+def with_pg_comment(comment: pg_meta.comment) -> Callable[type, type]:
     """
-    Comments can be inserted into composites, domains, or enums
+    Comments can be inserted into all types
     """
 
     def inject_comment(wrapped_cls: type) -> type:
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
         @classmethod
-        def __pg_comment(cls) -> pg_comment_meta:
+        def __pg_comment(cls) -> pg_meta.comment:
             return comment
 
         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
@@ -795,9 +897,9 @@ def with_pg_comment(comment: pg_comment_meta) -> Callable[type, type]:
     return inject_comment
 
 
-def with_pg_check(check: pg_check_meta) -> Callable[type, type]:
+def with_pg_check(check: pg_meta.check) -> Callable[type, type]:
     """
-    Checks can be inserted into domains or composite types
+    Checks can be inserted into domains
     """
 
     def inject_check(wrapped_cls: type) -> type:
@@ -814,10 +916,10 @@ def with_pg_check(check: pg_check_meta) -> Callable[type, type]:
 
         @classmethod
         def __get_pydantic_core_schema__(cls, *args, **kwargs) -> core_schema.CoreSchema:
-            return check._pg_check_meta__get_pydantic_core_schema__(*args, **kwargs)
+            return check._check__get_pydantic_core_schema__(*args, **kwargs)
 
         @classmethod
-        def __pg_check(cls) -> pg_check_meta:
+        def __pg_check(cls) -> pg_meta.check:
             return check
 
         return type(clsname, bases, clsdict | {
@@ -832,63 +934,129 @@ def as_domain(cls: type):
     return pg_domain(cls.__name__, bases, dict(cls.__dict__))
 
 
-def with_pg_foreign_key(fk: pg_foreign_key) -> Callable[type, type]:
-    def inject_fk(wrapped_cls: type) -> type:
-        if not issubclass(wrapped_cls, pg_table):
-            raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_foreign_key".')
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+class with_pg_max_value(Generic[T]):
+    def __init__(self, max_value: T):
+        self._max_value = max_value
+
+    def __call__(self, wrapped_cls) -> type:
+        if not issubclass(wrapped_cls, pg_sequence):
+            raise Exception('Decorated class must be a sequence')
+        wrapped_cls_base: type = wrapped_cls.__bases__[0]
+        type_arg: type = get_args(self.__orig_class__)[0]
+        if wrapped_cls_base is not type_arg:
+            raise Exception(f'Class {wrapped_cls} base class must match with {type(type_arg)}')
 
         @classmethod
-        def __pg_foreign_key(cls) -> pg_foreign_key:
-            return fk
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_foreign_key': __pg_foreign_key})
-    return inject_fk
-
-
-def with_pg_index(ix: pg_index) -> Callable[type, type]:
-    def inject_ix(wrapped_cls: type) -> type:
-        if not issubclass(wrapped_cls, pg_table):
-            raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_index".')
+        def __pg_max_value(cls) -> T:
+            return self._max_value
         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
 
-        @classmethod
-        def __pg_index(cls) -> pg_index:
-            return ix
-
         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_index': __pg_index})
-    return inject_ix
+            '__pg_max_value': __pg_max_value})
 
 
-def with_pg_unique_index(uix: pg_unique_index) -> Callable[type, type]:
-    def inject_uix(wrapped_cls: type) -> type:
-        if not issubclass(wrapped_cls, pg_table):
-            raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_unique_index".')
+class with_pg_min_value(Generic[T]):
+    def __init__(self, max_value: T):
+        self._max_value = max_value
 
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
-
-        @classmethod
-        def __pg_unique_index(cls) -> pg_unique_index:
-            return uix
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_unique_index': __pg_unique_index})
-    return inject_uix
-
-
-def with_pg_primary_key(pk: pg_primary_key) -> Callable[type, type]:
-    def inject_pk(wrapped_cls: type) -> type:
-        if not issubclass(wrapped_cls, pg_table):
-            raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_primary_key".')
-
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+    def __call__(self, wrapped_cls) -> type:
+        if not issubclass(wrapped_cls, pg_sequence):
+            raise Exception('Decorated class must be a sequence')
+        wrapped_cls_base: type = wrapped_cls.__bases__[0]
+        type_arg: type = get_args(self.__orig_class__)[0]
+        if wrapped_cls_base is not type_arg:
+            raise Exception(f'Class {wrapped_cls} base class must match with {type(type_arg)}')
 
         @classmethod
-        def __pg_primary_key(cls) -> pg_primary_key:
-            return pk
+        def __pg_min_value(cls) -> T:
+            return self._max_value
+        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls) # should use mro instead
 
         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_primary_key': __pg_primary_key})
-    return inject_pk
+            '__pg_min_value': __pg_min_value})
+
+# 
+# def with_pg_primary_key(pk: pg_primary_key) -> Callable[type, type]:
+#     def inject_pk(wrapped_cls: type) -> type:
+#         if not issubclass(wrapped_cls, pg_table):
+#             raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_primary_key".')
+# 
+#         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+# 
+#         @classmethod
+#         def __pg_primary_key(cls) -> pg_primary_key:
+#             return pk
+# 
+#         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
+#             '__pg_primary_key': __pg_primary_key})
+#     return inject_pk
+# 
+# def with_pg_foreign_key(fk: pg_foreign_key) -> Callable[type, type]:
+#     if len(fk.fk_class_column_name) <= 0:
+#         raise ValueError('Invalid foreign key definition, no target fields defined')
+#     if len(fk.fk_class_column_name) != len(fk.fk_other_class_column_name):
+#         raise ValueError('Invalid foreign key definition, mismatch in defined column length')
+# 
+#     def inject_fk(wrapped_cls: type) -> type:
+#         if not issubclass(wrapped_cls, pg_table):
+#             raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_foreign_key".')
+#         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+#         is_empty = True
+#         covered = 0
+#         errors: list[str] = []
+#         for name, info in extract_definition_fields(wrapped_cls, pg_table):
+#             is_empty = False
+#             if name in fk.fk_class_column_name:
+#                 covered += 1
+#         if covered != len(fk.fk_class_column_name):
+#             errors.append(f'Invalid foreign key definition, not all columns exist in {wrapped_cls}')
+#         if is_empty:
+#             errors.append('Invalid foreign key definition, target class doesnt define additional fields')
+#         for ix in range(0, len(fk.fk_class_column_name)):
+#             cn: str = fk.fk_class_column_name[ix]
+#             ocn: str = fk.fk_other_class_column_name[ix]
+#             if ocn not in fk.fk_other_class.model_fields:
+#                 errors.append(f'Field {ocn} must exist in other class definition {fk.fk_other_class}')
+#             if fk.fk_other_class.model_fields[name].annotation != wrapped_cls.model_fields[name].annotation:
+#                 errors.append(f'Invalid foreign key definition, field {ocn} type in {fk.fk_other_class} must match with {cn} in {wrapped_cls}')
+#         if len(errors) > 0:
+#             raise ValueError('\n'.join(errors))
+# 
+#         @classmethod
+#         def __pg_foreign_key(cls) -> pg_foreign_key:
+#             return fk
+# 
+#         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
+#             '__pg_foreign_key': __pg_foreign_key})
+#     return inject_fk
+# 
+# 
+# def with_pg_index(ix: pg_index) -> Callable[type, type]:
+#     def inject_ix(wrapped_cls: type) -> type:
+#         if not issubclass(wrapped_cls, pg_table):
+#             raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_index".')
+#         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+# 
+#         @classmethod
+#         def __pg_index(cls) -> pg_index:
+#             return ix
+# 
+#         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
+#             '__pg_index': __pg_index})
+#     return inject_ix
+# 
+# 
+# def with_pg_unique_index(uix: pg_unique_index) -> Callable[type, type]:
+#     def inject_uix(wrapped_cls: type) -> type:
+#         if not issubclass(wrapped_cls, pg_table):
+#             raise Exception(f'Class {wrapped_cls} must be a subclass of pg_table to decorate with "with_pg_unique_index".')
+# 
+#         bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+# 
+#         @classmethod
+#         def __pg_unique_index(cls) -> pg_unique_index:
+#             return uix
+# 
+#         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
+#             '__pg_unique_index': __pg_unique_index})
+#     return inject_uix

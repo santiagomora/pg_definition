@@ -4,7 +4,9 @@ from typing import\
     Callable,\
     KeysView,\
     Generator,\
-    get_args
+    get_args,\
+    get_origin,\
+    Union
 from dataclasses import\
     dataclass
 from pydantic.fields import\
@@ -17,25 +19,8 @@ from ordered_set import\
     OrderedSet
 from pydantic import\
     BaseModel
-
-
-# Merge strategy:
-# antes de ejecutar el flujo hay que determinar sus etapas.
-# Por ahora hay dos tipos de etapa: DeclarationValidationStage y DefinitionValidationStage
-def identity_generator(obj: Any) -> Generator[Any, None, None]:
-    yield obj
-
-
-@dataclass
-class ModelField:
-    name: str
-    info: FieldInfo
-
-
-def model_fields_generator(model: type) -> Generator[ModelField, None, None]:
-    for field_name in model.fields:
-        yield ModelField(field_name, model.fields[field_name])
-
+from deepdiff import \
+    DeepDiff
 
 # TODO esto deberia ir en su propio archivo porque esta creciendo bastante
 # la precondicion es que field_meta tenga datos, pero puede darse el caso 
@@ -137,42 +122,74 @@ def aggregate(
     return res
 
 
+def extract_by_instance_type_from_list(
+    elem_list: list[Any],
+    instance_type: type
+) -> Generator[type, None, None]:
+    for elem in elem_list:
+        if isinstance(elem, instance_type):
+            yield elem
+
+
+def extract_first_appearance_from_list(
+    elem_list: list[Any],
+    instance_type: type
+) -> Any:
+    for elem in elem_list:
+        if isinstance(elem, instance_type):
+            return elem
+    return None
+
+
 def extract_by_instance_type_from_field_info(
     info: FieldInfo,
     instance_type: type
 ) -> Generator[type, None, None]:
-    for meta in info.metadata:
-        if isinstance(meta, instance_type):
-            yield meta
+    for meta in extract_by_instance_type_from_list(info.metadata, instance_type):
+        yield meta
 
 
 def extract_first_instance_from_field_metadata(
     info: FieldInfo,
     instance_type: type
 ) -> Any:
-    for meta in extract_by_instance_type_from_field_info(info, instance_type):
-        yield meta
+    return extract_first_appearance_from_list(info.metadata, instance_type)
 
 
-# extract fields excluding inherited fields
 def extract_definition_fields(
     cls: type,
-    exclude_fields_from: type
+    base_class: type[BaseModel]
 ) -> Generator[tuple[str, FieldInfo], None, None]:
-    inherited_fields: set[str] = set(cls.model_fields.keys())
-    for icls in extract_by_instance_type_from_inherited_classes(cls, exclude_fields_from):
-        inherited_fields = inherited_fields.intersection(set(icls.model_fields.keys()))
-    for field_name in inherited_fields:
+    """
+    Exclude inherited fields and yield only those fields defined as table 
+    attributes directly. Considerations:
+    - Child class can redefine parent attribute, changes wont be detected unless
+    type or metadata are modified.
+    """
+    direct_fields: dict[str, FieldInfo] = set(cls.model_fields.keys())
+    for icls in extract_by_instance_type_from_inherited_classes(cls, base_class):
+        for inherited_field_name in icls.model_fields:
+            if inherited_field_name in direct_fields:
+                # if FieldInfo has not changed it means that the field is inherited
+                # so we must remove it. Otherwise the field is inherited and overriden
+                # in cls. It doesnt make sense to declare the field exactly as is in child
+                # model
+                if DeepDiff(icls.model_fields[inherited_field_name], cls.model_fields[inherited_field_name]) == {}:
+                    direct_fields.remove(inherited_field_name)
+    for field_name in direct_fields:
         yield (field_name, cls.model_fields[field_name])
 
 
 def extract_by_instance_type_from_model_fields_info(
     cls: type[BaseModel],
     instance_type: type,
-    exclude_fields_from: type[BaseModel] = None,
+    base_class: type[BaseModel] = None,
     conversion_fn: Optional[Callable[[Any], dict[str, Any]]] = None
 ) -> Generator[dict[str, Any], None, None]:
-    for field_name, field_info in extract_definition_fields(cls, exclude_fields_from):
+    """
+    Extracts by instance type from direct fields metadata
+    """
+    for field_name, field_info in extract_definition_fields(cls, base_class):
         for meta in extract_by_instance_type_from_field_info(field_info, instance_type):
             if conversion_fn is not None:
                 yield conversion_fn(field_name, meta)
@@ -180,7 +197,6 @@ def extract_by_instance_type_from_model_fields_info(
                 yield meta
 
 
-# el patron de error bag lo uso bastante, deberia pasarlo a un decorator
 def get_classified_metadata_from_fields(
     base_model
 ) -> dict[type, str]:
@@ -221,7 +237,8 @@ def extract_by_instance_type_from_inherited_classes(
     instance_type: Optional[type] = None
 ) -> tuple[type]:
     instance_metadata: list[Any] = []
-    base_classes: tuple[type] = inspect.getmro(cls)
+    # base_classes: tuple[type] = inspect.getmro(cls)
+    base_classes: tuple[type] = cls.__bases__
     if instance_type is None:
         return base_classes
     for base_class in base_classes:
@@ -289,6 +306,9 @@ def get_type_arguments(cls: type) -> tuple[type]:
         arg_types = arg_types.union(set(get_args(base)))
     return tuple(arg_types)
 
+
+def is_optional(field):
+    return get_origin(field) is Union and type(None) in get_args(field)
 
 # # * los atributos de las clases base no pueden compartirse y si
 # # se comparten deben tener la misma definicion

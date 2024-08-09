@@ -34,9 +34,9 @@ class DomainDefinitionFlow(TypeInstanceDefinitionFlow[pg_domain]):
         super().__init__('pgdriver-domain-definition-flow')
 
 
-pgdomain_definition_flow: DomainDefinitionFlow = DomainDefinitionFlow()
+pg_domain_definition_flow: DomainDefinitionFlow = DomainDefinitionFlow()
 
-with pgdomain_definition_flow.at_work_path('validation') as flow:
+with pg_domain_definition_flow.at_work_path('validation') as flow:
     flow.register(DomainValidateTargetMetaclassComponent())
 
-__all__ = {'pgdomain_definition_flow': pgdomain_definition_flow}
+__all__ = {'pg_domain_definition_flow': pg_domain_definition_flow}

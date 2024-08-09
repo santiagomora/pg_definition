@@ -51,16 +51,16 @@ class EnumDefinitionFlow(TypeSubclassDefinitionFlow[pg_enum]):
         super().__init__('pgdriver-enum-definition-flow')
 
 
-pgenum_definition_flow: EnumDefinitionFlow = EnumDefinitionFlow()
+pg_enum_definition_flow: EnumDefinitionFlow = EnumDefinitionFlow()
 
-with pgenum_definition_flow.at_work_path('validation') as flow:
+with pg_enum_definition_flow.at_work_path('validation') as flow:
     flow.register(EnumValidateSingleInheritedClassComponent())
 
-    with pgenum_definition_flow.at_work_path('extraction') as flow:
+    with pg_enum_definition_flow.at_work_path('extraction') as flow:
         flow.register(EnumExtractValuesComponent().critical())
 
-with pgenum_definition_flow.at_work_path('final') as flow:
+with pg_enum_definition_flow.at_work_path('final') as flow:
     flow.register(EnumStoreValuesComponent().critical())
 
 
-__all__ = {'pgenum_definition_flow': pgenum_definition_flow}
+__all__ = {'pg_enum_definition_flow': pg_enum_definition_flow}

@@ -8,7 +8,7 @@ from pgdriver.definition.inspection import\
 from pgdriver.definition.flows import\
     T
 from pgdriver.definition.build import\
-    pg_check_meta,\
+    pg_meta,\
     pg_check
 from typing import\
     Any
@@ -43,7 +43,7 @@ class CommonValidateUniqueMetadataTypesComponent(FlowComponent[T]):
     """
 
     def __init__(self, unique: list[type]):
-        super().__init__('validate-unique-metadata-type-component')
+        super().__init__('validate-unique-metadata-types-component')
         self._unique = unique
 
     def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
@@ -85,7 +85,7 @@ class CommonValidateFieldsBaseTypeComponent(FlowComponent[T]):
     """
 
     def __init__(self, *, type_subclass: list[type], type_instance: list[type]):
-        super().__init__('validate-base-type-component')
+        super().__init__('validate-fields-base-type-component')
         self._type_subclass = type_subclass
         self._type_instance = type_instance
 
@@ -123,9 +123,9 @@ class CommonExtractCheckConstraintsComponent(FlowComponent[T]):
         super().__init__('extract-check-constraints-component')
 
     def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
-        constraints: list[pg_check_meta] = [const for const in extract_by_instance_type_from_model_fields_info(
+        constraints: list[pg_meta.check] = [const for const in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_check_meta,
+            pg_meta.check,
             self._base_class,
             lambda field_name, ck: {
                 'ck_check_meta': ck,
