@@ -1,5 +1,11 @@
-from enum import\
-    Enum
+from pgdriver.definition.flows import\
+    FlowAccumulator,\
+    FlowComponentException,\
+    DefinitionFlow,\
+    FlowComponent
+from pgdriver.definition.build import\
+    pg_domain,\
+    pg_composite
 from typing import\
     Any,\
     Callable
@@ -7,7 +13,6 @@ from pydantic_core import\
     core_schema,\
     SchemaValidator
 from pydantic import\
-    BaseModel,\
     GetCoreSchemaHandler
 from pydantic import\
     Json
@@ -21,28 +26,14 @@ from pgdriver.definition.inspection import\
     extract_by_instance_type_from_inherited_classes
 
 
+pg_domain_definition_flow: DefinitionFlow = DefinitionFlow('pgdriver-domain-definition-flow')
+
+
 class pg_builtin(type):
-    pass
-
-
-class pg_domain(pg_builtin):
-    pass
-
-
-class pg_sequence(pg_builtin):
-    pass
-
-
-class pg_enum(metaclass=Enum):
-    pass
-
-
-class pg_composite(BaseModel):
-    pass
-
-
-class pg_table(BaseModel):
-    pass
+    def __init_subclass__(cls, *args, **kwargs):
+        super().__init_subclass__(*args, **kwargs)
+        accumulator: FlowAccumulator = FlowAccumulator()
+        pg_domain_definition_flow.execute(cls, accumulator)
 
 
 def _with_schema(schema: core_schema.CoreSchema) -> Callable[type, type]:
@@ -162,3 +153,67 @@ class pg_bool(metaclass=pg_builtin):
 @_with_schema(core_schema.decimal_schema(strict=True))
 class pg_decimal(Decimal, metaclass=pg_builtin):
     pass
+
+
+class DomainValidateTargetMetaclassComponent(FlowComponent[pg_domain]):
+    """
+    target type must be an instance of pg_domain and pg_builtin
+    """
+
+    def __init__(self):
+        super().__init__('validate-target-metaclass-component')
+
+    def execute(self, target: type[pg_domain], accumulator: FlowAccumulator) -> None:
+        errors: list[str] = []
+        if not isinstance(target, pg_domain):
+            errors.append(f'Target type {type} must be a pg_domain instance')
+        if not isinstance(target, pg_builtin):
+            errors.append(f'Target type {type} must be a pg_builtin instance')
+        if not isinstance(target, pg_composite):
+            errors.append(f'Target type {type} must be a pg_composite instance')
+        if len(errors) > 0:
+            raise FlowComponentException(self.name, [' or '.join(errors)])
+
+
+class DomainStoreFinalDefinitionComponent(FlowComponent[pg_domain]):
+    """
+    Stores final definition
+    """
+
+    def __init__(self):
+        super().__init__('domain-store-final-definition-component')
+
+    def execute(self, target: type[pg_domain], accumulator: FlowAccumulator) -> None:
+        accumulator.add_definition('final', {})
+
+    def get_dependencies(self) -> tuple[str]:
+        return ('validate-target-metaclass-component', )
+
+
+with pg_domain_definition_flow.at_work_path('validation') as flow:
+    flow.register(DomainValidateTargetMetaclassComponent())
+
+with pg_domain_definition_flow.at_work_path('') as flow:
+    flow.register(DomainStoreFinalDefinitionComponent())
+
+__all__ = {
+    'pg_int': pg_int,
+    'pg_bigint': pg_bigint,
+    'pg_smallint': pg_smallint,
+    'pg_json': pg_json,
+    'pg_text': pg_text,
+    'pg_double': pg_double,
+    'pg_bytes': pg_bytes,
+    'pg_timestamp': pg_timestamp,
+    'pg_past_timestamp': pg_past_timestamp,
+    'pg_future_timestamp': pg_future_timestamp,
+    'pg_timestamptz': pg_timestamptz,
+    'pg_past_timetstampz': pg_past_timetstampz,
+    'pg_future_timestamptz': pg_future_timestamptz,
+    'pg_time': pg_time,
+    'pg_timetz': pg_timetz,
+    'pg_date': pg_date,
+    'pg_past_date': pg_past_date,
+    'pg_future_date': pg_future_date,
+    'pg_bool': pg_bool,
+    'pg_decimal': pg_decimal}

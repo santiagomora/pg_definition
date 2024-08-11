@@ -1,3 +1,6 @@
+
+
+
 from abc import\
     ABC,\
     abstractmethod
@@ -525,236 +528,36 @@ class attr_(Specification[T], Generic[T, V]):
         return self._spec.as_str(left_operand)
 
 
-class pg_meta:
-    @dataclass
-    class index:
-        name: str
-        type: pg_table_index_type = pg_table_index_type.BTREE
+@dataclass(kw_only=True)
+class check(Generic[T]):
+    predicate: Specification[T]
+    name: str
 
-    @dataclass
-    class unique_index:
-        name: str
-        type: pg_table_index_type = pg_table_index_type.BTREE
+    def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        if self.predicate is None:
+            raise ValueError('Check predicate cannot be empty')
+        # if not isinstance(source, pg_table) and not isinstance(source, pg_composite):
+            # raise ValueError(f'Meta {source.__name__} must be used on a pg_table or a pg_composite instance field')
+        schema = handler(source)
+        # ignore class pg_meta.check[T] has no attribute __orig_class__ error
+        # raised by mypy
+        self.predicate.check_type(source, get_args(self.__orig_class__)[0])
+        return core_schema.with_info_after_validator_function(
+            function=self.validate,
+            schema=schema,
+            field_name=handler.field_name)
 
-    @dataclass
-    class primary_key:
-        name: str
+    def validate(self, value: T, info: ValidationInfo) -> T:
+        self.predicate.check_value(value, info.data)
+        return value
 
-    @dataclass(kw_only=True)
-    class foreign_key:
-        name: str
-        other_class: type[pg_table]
-        other_class_column_name: str
-        on_update: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
-        on_delete: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
-
-        def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-            errors: list[str] = []
-            if not issubclass(self.other_class, pg_table):
-                errors.append(f'Other class {self.other_class} must be a {pg_table} instance')
-            if self.other_class_column_name not in self.other_class.model_fields:
-                errors.append(f'Foreign key column {self.other_class_column_name} must exist in {self.other_class} definition')
-            other_class_column: FieldInfo = self.other_class.model_fields[self.other_class_column_name]
-            schema: core_schema.CoreSchema = handler(source)
-            if extract_type(other_class_column.annotation) != extract_type(source):
-                errors.append(f'Foreign key column {handler.field_name} type must match with {self.other_class_column_name} in {self.other_class} definition')
-            if len(errors) > 0:
-                raise TypeError(', '.join(errors))
-            # ignore class pg_meta.check[T] has no attribute __orig_class__ error
-            # raised by mypy
-            return schema
-
-    @dataclass
-    class comment:
-        content: str
-
-    @dataclass(kw_only=True)
-    class check(Generic[T]):
-        predicate: Specification[T]
-        name: str
-
-        def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-            if self.predicate is None:
-                raise ValueError('Check predicate cannot be empty')
-            # if not isinstance(source, pg_table) and not isinstance(source, pg_composite):
-                # raise ValueError(f'Meta {source.__name__} must be used on a pg_table or a pg_composite instance field')
-            schema = handler(source)
-            # ignore class pg_meta.check[T] has no attribute __orig_class__ error
-            # raised by mypy
-            self.predicate.check_type(source, get_args(self.__orig_class__)[0])
-            return core_schema.with_info_after_validator_function(
-                function=self.validate,
-                schema=schema,
-                field_name=handler.field_name)
-
-        def validate(self, value: T, info: ValidationInfo) -> T:
-            self.predicate.check_value(value, info.data)
-            return value
-
-        def merge(self, other: list['check']) -> Self:
-            if len(other) <= 0:
-                return self
-            self.predicate = and_(self.predicate, *tuple(other))
+    def merge(self, other: list['check']) -> Self:
+        if len(other) <= 0:
             return self
-
-    class default:
-        @dataclass
-        class value(Generic[T]):
-            content: T
-
-            def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-                base: type = get_args(self.__orig_class__)[0]
-                errors: list[str] = []
-                if not is_optional(source):
-                    errors.append('Annotated type must be optional')
-                if base not in get_args(source):
-                    errors.append('Base type must match annotated type')
-                if len(errors) > 0:
-                    raise TypeError(', '.join(errors))
-                # ignore class pg_meta.check[T] has no attribute __orig_class__ error
-                # raised by mypy
-                return core_schema.with_info_after_validator_function(
-                    function=self.validate,
-                    schema=handler(source),
-                    field_name=handler.field_name)
-
-            def validate(self, value: Optional[T], info: ValidationInfo) -> T:
-                if value is None:
-                    return self.content
-                return value
-
-            @staticmethod
-            def consistent_list(elems: list['pg_meta.default.value']) -> bool:
-                if len(elems) <= 0:
-                    return True
-                initial: pg_meta.default.value = elems[0]
-                consistent: bool = True
-                for elem in elems:
-                    consistent = consistent and elem.value == initial.value
-                return consistent
-
-        @dataclass
-        class nextval:
-            seq: pg_sequence
-
-            def __get_pydantic_core_schema__(self, source: type, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-                base_seq: type = self.seq.__bases__[0]
-                errors: list[str] = []
-                if is_optional(source):
-                    errors.append('Annotated type must not be optional')
-                if base_seq is not source:
-                    errors.append('Sequence type must match annotated type')
-                if len(errors) > 0:
-                    raise TypeError(', '.join(errors))
-                # ignore class pg_meta.check[T] has no attribute __orig_class__ error
-                # raised by mypy
-                return core_schema.with_info_after_validator_function(
-                    function=self.validate,
-                    schema=handler(source),
-                    field_name=handler.field_name)
-
-            def validate(self, value: Any, info: ValidationInfo) -> Any:
-                if value is None:
-                    raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
-                return value
-
-            @staticmethod
-            def consistent_list(elems: list['pg_meta.default.nextval']):
-                if len(elems) <= 0:
-                    return True
-                initial: pg_meta.default.nexval = elems[0]
-                consistent: bool = True
-                for elem in elems:
-                    consistent = consistent and elem.seq.__name__ != initial.seq.__name__
-                return consistent
+        self.predicate = and_(self.predicate, *tuple(other))
+        return self
 
 
-def with_pg_comment(comment: pg_meta.comment) -> Callable[type, type]:
-    """
-    Comments can be inserted into all types
-    """
-
-    def inject_comment(wrapped_cls: type) -> type:
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
-
-        @classmethod
-        def __pg_comment(cls) -> pg_meta.comment:
-            return comment
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_comment': __pg_comment})
-    return inject_comment
-
-
-def with_pg_check(check: pg_meta.check) -> Callable[type, type]:
-    """
-    Checks can be inserted into domains
-    """
-
-    def inject_check(wrapped_cls: type) -> type:
-        if not isinstance(wrapped_cls, pg_domain):
-            raise Exception('Check decorators can only be applied on domains.')
-
-        clsname: str = wrapped_cls.__name__
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
-        clsdict = dict(wrapped_cls.__dict__)
-
-        def __new__(cls, *args, **kwargs):
-            check.predicate.check_value(args[0], clsdict)
-            return bases[0].__new__(bases[0], *args)
-
-        @classmethod
-        def __get_pydantic_core_schema__(cls, *args, **kwargs) -> core_schema.CoreSchema:
-            return check._check__get_pydantic_core_schema__(*args, **kwargs)
-
-        @classmethod
-        def __pg_check(cls) -> pg_meta.check:
-            return check
-
-        return type(clsname, bases, clsdict | {
-            '__new__': __new__,
-            '__get_pydantic_core_schema__': __get_pydantic_core_schema__,
-            '__pg_check': __pg_check})
-    return inject_check
-
-
-class with_pg_max_value(Generic[T]):
-    def __init__(self, max_value: T):
-        self._max_value = max_value
-
-    def __call__(self, wrapped_cls) -> type:
-        if not isinstance(wrapped_cls, pg_sequence):
-            raise Exception('Decorated class must be a sequence')
-        wrapped_cls_base: type = wrapped_cls.__bases__[0]
-        type_arg: type = get_args(self.__orig_class__)[0]
-        if wrapped_cls_base is not type_arg:
-            raise Exception(f'Class {wrapped_cls} base class must match with {type(type_arg)}')
-
-        @classmethod
-        def __pg_max_value(cls) -> T:
-            return self._max_value
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_max_value': __pg_max_value})
-
-
-class with_pg_min_value(Generic[T]):
-    def __init__(self, max_value: T):
-        self._max_value = max_value
-
-    def __call__(self, wrapped_cls) -> type:
-        if not isinstance(wrapped_cls, pg_sequence):
-            raise Exception('Decorated class must be a sequence')
-        wrapped_cls_base: type = wrapped_cls.__bases__[0]
-        type_arg: type = get_args(self.__orig_class__)[0]
-        if wrapped_cls_base is not type_arg:
-            raise Exception(f'Class {wrapped_cls} base class must match with {type(type_arg)}')
-
-        @classmethod
-        def __pg_min_value(cls) -> T:
-            return self._max_value
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls) # should use mro instead
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_min_value': __pg_min_value})
+@dataclass
+class comment:
+    value: str

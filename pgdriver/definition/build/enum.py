@@ -1,9 +1,7 @@
 from pgdriver.definition.flows import\
     FlowAccumulator,\
-    TypeSubclassDefinitionFlow,\
+    DefinitionFlow,\
     FlowComponent
-from pgdriver.definition.build import\
-    pg_enum
 from pgdriver.definition.extraction.base import\
     pg_enum_definition,\
     pg_enum_value_definition
@@ -11,9 +9,21 @@ from pgdriver.definition.flows.common import\
     CommonValidateSingleInheritedClassComponent
 from typing import\
     Any
+from enum import\
+    Enum
 
 
-class EnumValidateSingleInheritedClassComponent(CommonValidateSingleInheritedClassComponent[pg_enum]):
+pg_enum_definition_flow: DefinitionFlow = DefinitionFlow('pgdriver-enum-definition-flow')
+
+
+class pg_enum(metaclass=Enum):
+    def __init_subclass__(cls, *args, **kwargs):
+        super().__init_subclass__(*args, **kwargs)
+        accumulator: FlowAccumulator = FlowAccumulator()
+        pg_enum_definition_flow.execute(cls, accumulator)
+
+
+class EnumValidateSingleInheritedClassComponent(CommonValidateSingleInheritedClassComponent):
     def get_dependencies(self) -> tuple[str]:
         return tuple()
 
@@ -23,7 +33,7 @@ class EnumDependsOnValidationComponents:
         return ('validate-single-inherited-class-component', )
 
 
-class EnumExtractValuesComponent(FlowComponent[pg_enum],
+class EnumExtractValuesComponent(FlowComponent,
                                  EnumDependsOnValidationComponents):
     """
     Metadata in fields are restricted to the passed instances
@@ -32,7 +42,7 @@ class EnumExtractValuesComponent(FlowComponent[pg_enum],
     def __init__(self):
         super().__init__('extract-values-component')
 
-    def execute(self, target: type[pg_enum], accumulator: FlowAccumulator) -> None:
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         pass
         # for value in list(target):
         # indexes: list[dict[str, Any]] = [ix for ix in extract_by_instance_type_from_model_fields_info(
@@ -58,7 +68,7 @@ class EnumExtractValuesComponent(FlowComponent[pg_enum],
         #     raise FlowComponentException(self.name, [str(e)])
 
 
-class EnumStoreValuesComponent(FlowComponent[pg_enum]):
+class EnumStoreValuesComponent(FlowComponent):
     """
     Metadata in fields are restricted to the passed instances
     """
@@ -66,14 +76,14 @@ class EnumStoreValuesComponent(FlowComponent[pg_enum]):
     def __init__(self):
         super().__init__('store-values-component')
 
-    def execute(self, target: type[pg_enum], accumulator: FlowAccumulator) -> None:
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         pass
 
     def get_dependencies(self) -> tuple[str]:
         return ('extract-values-component', )
 
 
-class EnumStoreFinalDefinitionComponent(FlowComponent[pg_enum]):
+class EnumStoreFinalDefinitionComponent(FlowComponent):
     """
     Stores final definition
     """
@@ -81,20 +91,13 @@ class EnumStoreFinalDefinitionComponent(FlowComponent[pg_enum]):
     def __init__(self):
         super().__init__('store-final-definition-component')
 
-    def execute(self, target: type[pg_enum], accumulator: FlowAccumulator) -> None:
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = accumulator.get_definition('built')
         accumulator.add_definition('final', {} if definition is None else definition)
 
     def get_dependencies(self) -> tuple[str]:
         return ('store-values-component', )
 
-
-class EnumDefinitionFlow(TypeSubclassDefinitionFlow[pg_enum]):
-    def __init__(self):
-        super().__init__('pgdriver-enum-definition-flow')
-
-
-pg_enum_definition_flow: EnumDefinitionFlow = EnumDefinitionFlow()
 
 with pg_enum_definition_flow.at_work_path('validation') as flow:
     flow.register(EnumValidateSingleInheritedClassComponent())

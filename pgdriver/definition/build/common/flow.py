@@ -15,13 +15,27 @@ from enum import\
     Enum,\
     auto
 import pprint
-from heapq import\
-    heappush,\
-    heappop
+# from heapq import\
+#     heappush,\
+#     heappop
 from contextlib import\
     contextmanager
 from pgdriver.definition.inspection import\
     get_type_arguments
+# from pgdriver.definition.flows import\
+#     DefinitionFlowRegistry
+# from pgdriver.definition.flows.table import\
+#     pg_table_definition_flow
+# from pgdriver.definition.flows.composite import\
+#     pg_composite_definition_flow
+# from pgdriver.definition.flows.domain import\
+#     pg_domain_definition_flow
+# from pgdriver.definition.flows.enum import\
+#     pg_enum_definition_flow
+# from pgdriver.definition.flows.sequence import\
+#     pg_sequence_definition_flow
+# from pgdriver.definition.flows import\
+#     FlowAccumulator
 
 
 class FlowComponentException(Exception):
@@ -138,11 +152,10 @@ class FlowAccumulator(HandlesWorkPath):
         return self
 
 
-class FlowComponent(ABC, Generic[T]):
+class FlowComponent(ABC):
     def __init__(self, name: str) -> None:
         self._name = name
         self._accumulator_errors_policy = FlowAccumulatorErrorsPolicy.LOG_INFO
-        self._base_class = get_type_arguments(self)[0]
 
     @property
     def name(self) -> str:
@@ -166,11 +179,11 @@ class FlowComponent(ABC, Generic[T]):
         pass
 
 
-class DefinitionFlow(HandlesWorkPath, Generic[T]):
+class DefinitionFlow(HandlesWorkPath):
     def __init__(self, name: str) -> None:
         HandlesWorkPath.__init__(self)
         self._name = name
-        self._target = get_type_arguments(self)[0]
+        # self._target = get_type_arguments(self)[0]
         self._components: OrderedDict[str, FlowComponent[T]] = OrderedDict()
 
     @property
@@ -181,11 +194,11 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
     def name(self) -> str:
         return self._name
 
-    def __repr__(self):
-        return f'FlowComponent(target={self.target})'
+    # def __repr__(self):
+    #     return f'FlowComponent(target={self.target})'
 
-    def __lt__(self, other: 'DefinitionFlow') -> bool:
-        return self.applies_to(other.target)
+    # def __lt__(self, other: 'DefinitionFlow') -> bool:
+    #     return self.applies_to(other.target)
 
     def register(self, component: FlowComponent[T]) -> None:
         if component.name in self._components:
@@ -207,8 +220,8 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
         self._components.move_to_end(component.name)
 
     def execute(self, on_type: type[T], accumulator: FlowAccumulator) -> None:
-        if not self.applies_to(on_type):
-            raise Exception(f'Type {on_type} must be a subclass of {self.target} to be executed in flow {self.name}')
+        # if not self.applies_to(on_type):
+            # raise Exception(f'Type {on_type} must be a subclass of {self.target} to be executed in flow {self.name}')
         i: int = 0
         j: int = 0
         components: list[FlowComponent[T]] = [c for c in self._components.values()]
@@ -228,42 +241,73 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
                     j += 1
             i = j
 
-    @abstractmethod
-    def applies_to(self, other: 'DefinitionFlow'):
-        pass
+    # @abstractmethod
+    # def applies_to(self, other: 'DefinitionFlow'):
+    #     pass
 
 
-class TypeSubclassDefinitionFlow(DefinitionFlow[T]):
-    def applies_to(self, tp: type):
-        return issubclass(tp, self.target)
-
-
-class TypeInstanceDefinitionFlow(DefinitionFlow[T]):
-    def applies_to(self, tp: type):
-        return isinstance(tp, self.target)
+# class TypeSubclassDefinitionFlow(DefinitionFlow[T]):
+#     def applies_to(self, tp: type):
+#         return issubclass(tp, self.target)
+# 
+# 
+# class TypeInstanceDefinitionFlow(DefinitionFlow[T]):
+#     def applies_to(self, tp: type):
+#         return isinstance(tp, self.target)
 
 
 # se asocia el definition context del type con el definition context del type padre
 # se asume que el type a registrar es parte de una definicion valida
-class DefinitionFlowRegistry:
-    def __init__(self, name: str) -> None:
-        self._name = name
-        self._flows: dict[type, DefinitionFlow] = {}
-
-    def register(self, flow: DefinitionFlow) -> None:
-        if flow.target in self._flows:
-            raise Exception(f'Context registry: {flow.target} definition flow already defined: {self[flow.target]._name}')
-        self._flows[flow.target] = flow
-
-    def execute_flow(self, on_type: type) -> dict[Any, Any]:
-        execute_flows: list[DefinitionFlow] = []
-        accumulator: FlowAccumulator = FlowAccumulator(on_type)
-        for flow_target in self._flows:
-            if self._flows[flow_target].applies_to(on_type):
-                heappush(execute_flows, self._flows[flow_target])
-        if len(execute_flows) == 0:
-            raise Exception(f'Context registry: definition flows not defined for {on_type}')
-        while len(execute_flows) > 0:
-            flow = heappop(execute_flows)
-            flow.execute(on_type, accumulator)
-        return accumulator
+# class DefinitionFlowRegistry:
+#     def __init__(self, name: str) -> None:
+#         self._name = name
+#         self._flows: dict[type, DefinitionFlow] = {}
+# 
+#     def register(self, flow: DefinitionFlow) -> None:
+#         if flow.target in self._flows:
+#             raise Exception(f'Context registry: {flow.target} definition flow already defined: {self[flow.target]._name}')
+#         self._flows[flow.target] = flow
+# 
+#     def execute_flow(self, on_type: type) -> dict[Any, Any]:
+#         execute_flows: list[DefinitionFlow] = []
+#         accumulator: FlowAccumulator = FlowAccumulator(on_type)
+#         for flow_target in self._flows:
+#             if self._flows[flow_target].applies_to(on_type):
+#                 heappush(execute_flows, self._flows[flow_target])
+#         if len(execute_flows) == 0:
+#             raise Exception(f'Context registry: definition flows not defined for {on_type}')
+#         while len(execute_flows) > 0:
+#             flow = heappop(execute_flows)
+#             flow.execute(on_type, accumulator)
+#         return accumulator
+# 
+# 
+# pg_driver_definition_flow_registry = DefinitionFlowRegistry('pgdriver-definition-flow-registry')
+# 
+# pg_driver_definition_flow_registry.register(pg_table_definition_flow)
+# pg_driver_definition_flow_registry.register(pg_enum_definition_flow)
+# pg_driver_definition_flow_registry.register(pg_composite_definition_flow)
+# pg_driver_definition_flow_registry.register(pg_domain_definition_flow)
+# pg_driver_definition_flow_registry.register(pg_sequence_definition_flow)
+# 
+# 
+# def valid_pg_definition(wrapped_cls: type):
+#     accumulator: FlowAccumulator = pg_driver_definition_flow_registry.execute_flow(wrapped_cls)
+#     final_definition: dict[str, Any] = accumulator.get_definition('final')
+#     for name in final_definition:
+#         setattr(wrapped_cls, name, final_definition[name])
+#     return wrapped_cls
+# 
+# 
+# __all__ = {
+#     'valid_pg_definition': valid_pg_definition}
+# 
+# # 
+# # class test:
+# #     def __init_subclass__(cls, *args, **kwargs):
+# #         super().__init_subclass__(*args, **kwargs)
+# #         print('culo')
+# # 
+# # 
+# # class test1(test):
+# #     pass
