@@ -7,20 +7,18 @@ from typing import\
     get_args,\
     get_origin,\
     Union
-from dataclasses import\
-    dataclass
 from pydantic.fields import\
     FieldInfo
 import copy
 from collections import\
     OrderedDict
-import inspect
 from ordered_set import\
     OrderedSet
 from pydantic import\
     BaseModel
 from deepdiff import \
     DeepDiff
+
 
 # TODO esto deberia ir en su propio archivo porque esta creciendo bastante
 # la precondicion es que field_meta tenga datos, pero puede darse el caso 
@@ -293,9 +291,9 @@ def has_classmethod(cls: type, methodname: str) -> bool:
     return callable(attr)
 
 
-def execute_classmethod(cls: type, methodname: str, *args, **kwargs) -> Any:
+def execute_classmethod(cls: type, methodname: str, default_value: Any = None, *args, **kwargs) -> Any:
     if not has_classmethod(cls, methodname):
-        raise Exception(f'Method {classmethod} not defined for {cls.__name__}')
+        return default_value
     method = getattr(cls, f'_{cls.__name__}__{methodname}')
     return method(*args, **kwargs)
 
@@ -307,8 +305,14 @@ def get_type_arguments(cls: type) -> tuple[type]:
     return tuple(arg_types)
 
 
-def is_optional(field):
+def is_optional(field) -> bool:
     return get_origin(field) is Union and type(None) in get_args(field)
+
+
+def extract_type(tp: type) -> type:
+    if is_optional(tp):
+        return get_args(tp)[0]
+    return tp
 
 # # * los atributos de las clases base no pueden compartirse y si
 # # se comparten deben tener la misma definicion

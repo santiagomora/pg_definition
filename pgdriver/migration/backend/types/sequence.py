@@ -1,7 +1,8 @@
 from pgdriver.definition.build import\
     pg_bigint,\
-    pg_meta,\
     pg_text
+from pgdriver.definition.meta import\
+    pg_meta
 from pgdriver.definition.registry import\
     valid_pg_definition
 from typing_extensions import\

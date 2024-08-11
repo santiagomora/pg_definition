@@ -29,10 +29,28 @@ class SequenceValidateTargetTypeComponent(FlowComponent[pg_sequence]):
         raise FlowComponentException(self.name, [f'Target type {type} must be a pg_bigint, pg_int or a pg_smallint instance'])
 
 
+class SequenceStoreFinalDefinitionComponent(FlowComponent[pg_sequence]):
+    """
+    Stores final definition
+    """
+
+    def __init__(self):
+        super().__init__('store-final-definition-component')
+
+    def execute(self, target: type[pg_sequence], accumulator: FlowAccumulator) -> None:
+        accumulator.add_definition('final', {})
+
+    def get_dependencies(self) -> tuple[str]:
+        return ('validate-target-type-component', )
+
+
 pg_sequence_definition_flow: SequenceDefinitionFlow = SequenceDefinitionFlow()
 
 with pg_sequence_definition_flow.at_work_path('validation') as flow:
     flow.register(SequenceValidateTargetTypeComponent())
+
+with pg_sequence_definition_flow.at_work_path('') as flow:
+    flow.register(SequenceStoreFinalDefinitionComponent())
 
 
 __all__ = {'pg_sequence_definition_flow': pg_sequence_definition_flow}

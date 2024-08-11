@@ -1,7 +1,8 @@
 from pgdriver.definition.build import\
     pg_bigint,\
-    pg_meta,\
     pg_text
+from pgdriver.definition.meta import\
+    pg_meta
 from pgdriver.definition.registry import\
     valid_pg_definition
 from typing_extensions import\
@@ -22,6 +23,7 @@ class mgr_domain(mgr_object):
     name: Annotated[
         pg_text,
         pg_meta.unique_index('mgr_domain_unique_qualified_name_uix')]
+    type_name: pg_text
 
 
 # @valid_pg_definition

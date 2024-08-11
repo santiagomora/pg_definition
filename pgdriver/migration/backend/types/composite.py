@@ -1,7 +1,9 @@
 from pgdriver.definition.build import\
     pg_bigint,\
-    pg_meta,\
+    pg_int,\
     pg_text
+from pgdriver.definition.meta import\
+    pg_meta
 from pgdriver.definition.registry import\
     valid_pg_definition
 from typing_extensions import\
@@ -18,8 +20,7 @@ class mgr_composite(mgr_object):
     id: Annotated[
         pg_bigint,
         pg_meta.primary_key('mgr_composite_pk')]
-    check_constraint: pg_text
-    schema: Annotated[
+    schema_name: Annotated[
         pg_text,
         pg_meta.unique_index('mgr_composite_unique_qualified_name_uix')]
     name: Annotated[
@@ -37,11 +38,16 @@ class mgr_composite_attribute(mgr_attribute):
         pg_meta.unique_index('mgr_composite_attribute_name_object_id_uix')]
     object_id: Annotated[
         pg_bigint,
+        pg_meta.unique_index('mgr_composite_attribute_name_object_id_uix'),
+        pg_meta.unique_index('mgr_composite_attribute_object_id_order_uix'),
         pg_meta.foreign_key(
             name='mgr_composite_attribute_object_id_fk',
             other_class=mgr_composite,
             other_class_column_name='id')]
-    check: Optional[pg_text]
+    order: Annotated[
+        pg_int,
+        pg_meta.unique_index('mgr_composite_attribute_object_id_order_uix')]
+    check_constraint: Optional[pg_text]
     comment: Optional[pg_text]
     type_name: pg_text
 

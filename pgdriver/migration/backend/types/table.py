@@ -1,9 +1,11 @@
 from pgdriver.definition.build import\
     pg_bigint,\
-    pg_meta,\
+    pg_int,\
     pg_enum,\
     pg_text,\
     pg_bool
+from pgdriver.definition.meta import\
+    pg_meta
 from pgdriver.definition.registry import\
     valid_pg_definition
 from typing_extensions import\
@@ -35,10 +37,14 @@ class mgr_table_column(mgr_attribute):
         pg_meta.primary_key('mgr_table_column_pk')]
     object_id: Annotated[
         pg_bigint,
+        pg_meta.unique_index('mgr_table_column_object_id_order_uix'),
         pg_meta.foreign_key(
             name='mgr_table_column_object_id_fk',
             other_class=mgr_table,
             other_class_column_name='id')]
+    order: Annotated[
+        pg_int,
+        pg_meta.unique_index('mgr_table_column_object_id_order_uix')]
     check: Optional[pg_text]
     comment: Optional[pg_text]
     default_value_name: Optional[pg_text]

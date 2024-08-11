@@ -16,11 +16,13 @@ from pgdriver.definition.flows.common import\
 from pgdriver.definition.inspection import\
     extract_first_instance_from_field_metadata
 from pgdriver.definition.build import\
-    pg_attribute,\
     pg_domain,\
     pg_composite,\
     pg_enum,\
-    pg_builtin,\
+    pg_builtin
+from pgdriver.definition.extraction.base import\
+    pg_attribute_definition
+from pgdriver.definition.meta import\
     pg_meta
 
 
@@ -68,14 +70,16 @@ class CompositeExtractAttributesDefinitionComponent(FlowComponent[pg_composite],
         for name, info in target.model_fields.items():
             check: Optional[pg_meta.check] = extract_first_instance_from_field_metadata(info, pg_meta.check)
             attr_data: dict[str, Any] = {
-                'attr_name': name,
-                'attr_type': info.annotation}
+                'name': name,
+                'type_name': info.annotation}
             if check is not None:
-                attr_data['attr_check'] = check
+                attr_data['check_constraint'] = check
+            comment: Optional[pg_meta.comment] = extract_first_instance_from_field_metadata(info, pg_meta.comment)
+            attr_data['comment'] = comment
             attributes.append(attr_data)
-        if len(attributes) > 0:
-            accumulator.add_definition('columns', attributes)
-        raise FlowComponentException(self.name, f'Class {target} must declare attributes.')
+        if len(attributes) <= 0:
+            raise FlowComponentException(self.name, f'Class {target} must declare attributes.')
+        accumulator.add_definition('attributes', attributes)
 
 
 class CompositeStoreAttributesDefinitionComponent(FlowComponent[pg_composite]):
@@ -84,12 +88,12 @@ class CompositeStoreAttributesDefinitionComponent(FlowComponent[pg_composite]):
 
     def execute(self, target: type[pg_composite], accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('attributes', 'extraction')
-        if definition is None:
-            return
-        attrs: list[pg_attribute] = [pg_attribute(**attr) for attr in definition]
+
+        attrs: list[pg_attribute_definition] = [] if definition is None else [
+            pg_attribute_definition(**attr) for attr in definition]
 
         @classmethod
-        def __pg_attributes(cls) -> list[pg_attribute]:
+        def __pg_attributes(cls) -> list[pg_attribute_definition]:
             return attrs
 
         accumulator.add_definition('__pg_attributes', __pg_attributes)
@@ -101,6 +105,22 @@ class CompositeStoreAttributesDefinitionComponent(FlowComponent[pg_composite]):
 class CompositeStoreCheckDefinitionComponent(CommonStoreCheckConstraintsComponent[pg_composite]):
     def get_dependencies(self) -> tuple[str]:
         return ('extract-check-constraints-component', )
+
+
+class CompositeStoreFinalDefinitionComponent(FlowComponent[pg_composite]):
+    """
+    Stores final definition
+    """
+
+    def __init__(self):
+        super().__init__('store-final-definition-component')
+
+    def execute(self, target: type[pg_composite], accumulator: FlowAccumulator) -> None:
+        definition: dict[str, Any] = accumulator.get_definition('built')
+        accumulator.add_definition('final', {} if definition is None else definition)
+
+    def get_dependencies(self) -> tuple[str]:
+        return ('store-check-constraints-component', )
 
 
 class CompositeDefinitionFlow(TypeSubclassDefinitionFlow[pg_composite]):
@@ -116,20 +136,24 @@ with pg_composite_definition_flow.at_work_path('validation') as flow:
         pg_meta.check]))
     flow.register(CompositeValidateUniqueMetadataTypesComponent([
         pg_meta.check]))
-    flow.register(CompositeValidateFieldsBaseTypeComponent(type_subclass=[
-        pg_enum,
-        pg_composite],
+    flow.register(CompositeValidateFieldsBaseTypeComponent(
+        type_subclass=[
+            pg_enum,
+            pg_composite],
         type_instance=[
-        pg_builtin,
-        pg_domain]))
+            pg_builtin,
+            pg_domain]))
 
 with pg_composite_definition_flow.at_work_path('extraction') as flow:
     flow.register(CompositeExtractCheckDefinitionComponent().critical())
     flow.register(CompositeExtractAttributesDefinitionComponent())
 
-with pg_composite_definition_flow.at_work_path('final') as flow:
+with pg_composite_definition_flow.at_work_path('built') as flow:
     flow.register(CompositeStoreAttributesDefinitionComponent().critical())
     flow.register(CompositeStoreCheckDefinitionComponent())
+
+with pg_composite_definition_flow.at_work_path('') as flow:
+    flow.register(CompositeStoreFinalDefinitionComponent().critical())
 
 
 __all__ = {'pg_composite_definition_flow': pg_composite_definition_flow}

@@ -12,8 +12,8 @@ from pgdriver.definition.flows.sequence import\
     pg_sequence_definition_flow
 from pgdriver.definition.flows import\
     FlowAccumulator
-from pgdriver.definition.inspection import\
-    extract_by_instance_type_from_inherited_classes
+from typing import\
+    Any
 
 
 pg_driver_definition_flow_registry = DefinitionFlowRegistry('pgdriver-definition-flow-registry')
@@ -27,8 +27,10 @@ pg_driver_definition_flow_registry.register(pg_sequence_definition_flow)
 
 def valid_pg_definition(wrapped_cls: type):
     accumulator: FlowAccumulator = pg_driver_definition_flow_registry.execute_flow(wrapped_cls)
-    bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
-    return type(wrapped_cls.__name__, bases, accumulator.get_definition('final') | wrapped_cls.__dict__)
+    final_definition: dict[str, Any] = accumulator.get_definition('final')
+    for name in final_definition:
+        setattr(wrapped_cls, name, final_definition[name])
+    return wrapped_cls
 
 
 __all__ = {

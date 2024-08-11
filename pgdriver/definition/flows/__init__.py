@@ -8,8 +8,6 @@ from typing import\
     Optional,\
     Generic,\
     TypeVar,\
-    get_args,\
-    Callable,\
     ContextManager
 from typing_extensions import\
     Self
@@ -58,7 +56,7 @@ class HandlesWorkPath:
         self._work_path = ''
 
     @contextmanager
-    def at_work_path(self, name) -> ContextManager[Self]:
+    def at_work_path(self, name: str) -> ContextManager[Self]:
         old_path: str = self._work_path
         self._work_path = name if self._work_path == '' else f'{self._work_path}.{name}'
         yield self
@@ -114,8 +112,10 @@ class FlowAccumulator(HandlesWorkPath):
         return None if name not in dic else dic[name]
 
     def add_definition(self, name: str, definition: Any) -> Self:
-        # print(name, self._work_path)
         dic: dict[str, Any] = self._definition
+        if self._work_path == '':
+            dic[name] = definition
+            return self
         path: list[str] = self._work_path.split('.')
         for ix in range(0, len(path)):
             at: str = path[ix]
@@ -185,7 +185,7 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
         return f'FlowComponent(target={self.target})'
 
     def __lt__(self, other: 'DefinitionFlow') -> bool:
-        return self.is_subordinate(other)
+        return self.applies_to(other.target)
 
     def register(self, component: FlowComponent[T]) -> None:
         if component.name in self._components:
@@ -207,7 +207,7 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
         self._components.move_to_end(component.name)
 
     def execute(self, on_type: type[T], accumulator: FlowAccumulator) -> None:
-        if not issubclass(on_type, self._target):
+        if not self.applies_to(on_type):
             raise Exception(f'Type {on_type} must be a subclass of {self.target} to be executed in flow {self.name}')
         i: int = 0
         j: int = 0
@@ -229,18 +229,18 @@ class DefinitionFlow(HandlesWorkPath, Generic[T]):
             i = j
 
     @abstractmethod
-    def is_subordinate(self, other: 'DefinitionFlow'):
+    def applies_to(self, other: 'DefinitionFlow'):
         pass
 
 
 class TypeSubclassDefinitionFlow(DefinitionFlow[T]):
-    def is_subordinate(self, other: 'DefinitionFlow'):
-        return issubclass(self.target, other.target)
+    def applies_to(self, tp: type):
+        return issubclass(tp, self.target)
 
 
 class TypeInstanceDefinitionFlow(DefinitionFlow[T]):
-    def is_subordinate(self, other: 'DefinitionFlow'):
-        return isinstance(self.target, other.target)
+    def applies_to(self, tp: type):
+        return isinstance(tp, self.target)
 
 
 # se asocia el definition context del type con el definition context del type padre
@@ -259,7 +259,7 @@ class DefinitionFlowRegistry:
         execute_flows: list[DefinitionFlow] = []
         accumulator: FlowAccumulator = FlowAccumulator(on_type)
         for flow_target in self._flows:
-            if issubclass(on_type, flow_target):
+            if self._flows[flow_target].applies_to(on_type):
                 heappush(execute_flows, self._flows[flow_target])
         if len(execute_flows) == 0:
             raise Exception(f'Context registry: definition flows not defined for {on_type}')

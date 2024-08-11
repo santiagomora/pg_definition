@@ -2,11 +2,11 @@ from pgdriver.definition.build import\
     pg_table,\
     pg_sequence,\
     pg_bigint,\
-    pg_meta,\
-    pg_datetime,\
+    pg_timestamp,\
     pg_enum,\
-    pg_text,\
-    pg_bool
+    pg_text
+from pgdriver.definition.meta import\
+    pg_meta
 from pgdriver.definition.registry import\
     valid_pg_definition
 from typing_extensions import\
@@ -59,7 +59,7 @@ class mgr_migration(pg_table):
             name='mgr_attribute_module_id_fk',
             other_class=mgr_module,
             other_class_column_name='id')]
-    executed_at: pg_datetime
+    executed_at: pg_timestamp
     operation: mgr_migration_operation_enum
 
 
@@ -84,6 +84,7 @@ class mgr_object(pg_table):
         pg_text,
         pg_meta.unique_index('mgr_object_unique_qualified_name_uix')]
     comment: Optional[pg_text]
+    owner: pg_text
 
 
 @valid_pg_definition

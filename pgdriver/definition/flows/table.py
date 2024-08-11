@@ -13,17 +13,18 @@ from pgdriver.definition.flows.common import\
     CommonStoreCheckConstraintsComponent,\
     ValidatesConflictingDefinitions
 from pgdriver.definition.build import\
-    pg_meta,\
     pg_table,\
-    pg_primary_key,\
-    pg_unique_index,\
-    pg_foreign_key,\
-    pg_index,\
-    pg_column,\
     pg_domain,\
     pg_composite,\
     pg_enum,\
     pg_builtin
+from pgdriver.definition.extraction.base import\
+    pg_column_definition,\
+    pg_foreign_key_definition,\
+    pg_primary_key_definition,\
+    pg_index_definition
+from pgdriver.definition.meta import\
+    pg_meta
 from typing import\
     Any
 from pgdriver.definition.inspection import\
@@ -240,15 +241,16 @@ class TableExtractIndexDefinitionFromDeclarationComponent(FlowComponent[pg_table
             pg_meta.index,
             self._base_class,
             lambda field_name, index: {
-                'ix_column_name': field_name,
-                'ix_type':   index.type,
-                'ix_name':   index.name})]
+                'column_name': field_name,
+                'type':   index.type,
+                'name':   index.name,
+                'is_unique': False})]
         try:
             grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('ix_name', ),
+                ('name', ),
                 indexes)
             definition: list[dict[str, Any]] = [aggregate(grouped_by_name[ix_name], {
-                    'ix_column_name': ordered_set_accumulator}) for ix_name in grouped_by_name]
+                    'column_name': ordered_set_accumulator}) for ix_name in grouped_by_name]
             if len(definition) <= 0:
                 return
             self.check_conflicting_definitions(target, 'indexes')
@@ -270,14 +272,14 @@ class TableExtractPrimaryKeyDefinitionFromDeclarationComponent(FlowComponent[pg_
             pg_meta.primary_key,
             self._base_class,
             lambda field_name, pk: {
-                'pk_column_name': field_name,
-                'pk_name':   pk.name})]
+                'column_name': field_name,
+                'name':   pk.name})]
         try:
             grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('pk_name', ),
+                ('name', ),
                 pks)
             definition: list[dict[str, Any]] = [aggregate(grouped_by_name[pk_name], {
-                    'pk_column_name': ordered_set_accumulator}) for pk_name in grouped_by_name]
+                    'column_name': ordered_set_accumulator}) for pk_name in grouped_by_name]
             if len(definition) <= 0:
                 return
             self.check_conflicting_definitions(target, 'primary_key')
@@ -299,19 +301,19 @@ class TableExtractForeignKeyDefinitionFromDeclarationComponent(FlowComponent[pg_
             pg_meta.foreign_key,
             self._base_class,
             lambda field_name, fk: {
-                'fk_name':                    fk.name,
-                'fk_other_class':             fk.other_class,
-                'fk_other_class_column_name': fk.other_class_column_name,
-                'fk_on_update':               fk.on_update,
-                'fk_on_delete':               fk.on_delete,
-                'fk_class_column_name':       field_name})]
+                'name':                    fk.name,
+                'other_class_name':        fk.other_class.__name__,
+                'other_class_column_name': fk.other_class_column_name,
+                'on_update':               fk.on_update,
+                'on_delete':               fk.on_delete,
+                'class_column_name':       field_name})]
         try:
             grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('fk_name', ),
+                ('name', ),
                 fks)
             definition: list[dict[str, Any]] = [aggregate(grouped_by_name[fk_name], {
-                    'fk_class_column_name': ordered_set_accumulator,
-                    'fk_other_class_column_name': ordered_set_accumulator}) for fk_name in grouped_by_name]
+                    'class_column_name': ordered_set_accumulator,
+                    'other_class_column_name': ordered_set_accumulator}) for fk_name in grouped_by_name]
             if len(definition) <= 0:
                 return
             self.check_conflicting_definitions(target, 'foreign_keys')
@@ -333,14 +335,16 @@ class TableExtractUniqueIndexDefinitionFromDeclarationComponent(FlowComponent[pg
             pg_meta.unique_index,
             self._base_class,
             lambda field_name, uix: {
-                'uix_column_name': field_name,
-                'uix_name':   uix.name})]
+                'column_name': field_name,
+                'type':        uix.type,
+                'name':        uix.name,
+                'is_unique':   True})]
         try:
             grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('uix_name', ),
+                ('name', ),
                 uixs)
             definition: list[dict[str, Any]] = [aggregate(grouped_by_name[uix_name], {
-                    'uix_column_name': ordered_set_accumulator}) for uix_name in grouped_by_name]
+                    'column_name': ordered_set_accumulator}) for uix_name in grouped_by_name]
             if len(definition) <= 0:
                 return
             self.check_conflicting_definitions(target, 'unique_indexes')
@@ -374,16 +378,18 @@ class TableExtractColumnDefinitionFromDeclarationComponent(FlowComponent[pg_tabl
     def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
         # extraer las definiciones de columna
         columns: list[dict[str, Any]] = []
+        ctr: int = 0
         for name, info in target.model_fields.items():
             check: Optional[pg_meta.check] = extract_first_instance_from_field_metadata(info, pg_meta.check)
             col_data: dict[str, Any] = {
-                'col_name': name,
-                'col_type': info.annotation}
+                'name': name,
+                'type_name': info.annotation.__name__}
+            col_data['order'] = ctr
+            ctr += 1
             if check is not None:
-                col_data['col_check'] = check
+                col_data['check_constraint'] = check.as_str()
             comment: Optional[pg_meta.comment] = extract_first_instance_from_field_metadata(info, pg_meta.comment)
-            if comment is not None:
-                col_data['col_comment'] = comment
+            col_data['comment'] = comment
             columns.append(col_data)
         if len(columns) <= 0:
             raise FlowComponentException(self.name, [f'Class {target} must declare columns.'])
@@ -405,51 +411,18 @@ class TableStoreExtractedPrimaryKeyComponent(FlowComponent[pg_table]):
 
     def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('primary_key', 'extraction')
-        if definition is None:
-            return
 
-        pk: pg_primary_key = pg_primary_key(**(definition[0] | {
-            'pk_column_name': tuple(definition[0]['pk_column_name'])}))
+        pk: pg_primary_key_definition = None if definition is None else pg_primary_key_definition(**(definition[0] | {
+            'column_name': tuple(definition[0]['column_name'])}))
 
         @classmethod
-        def __pg_primary_key(cls) -> list[pg_primary_key]:
+        def __pg_primary_key(cls) -> Optional[pg_primary_key_definition]:
             return pk
 
         accumulator.add_definition('__pg_primary_key', __pg_primary_key)
 
     def get_dependencies(self) -> tuple[str]:
         return ('extract-primary-key-definition-from-declaration-component', )
-
-
-class TableStoreExtractedUniqueIndexComponent(FlowComponent[pg_table]):
-    """
-    Validates that a column doesnt appear in more than one primary key definition
-    """
-
-    def __init__(self):
-        super().__init__('store-extracted-unique-index-component')
-
-    def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
-        definition: list[dict[str, Any]] = accumulator.get_definition('unique_indexes', 'extraction')
-        if definition is None:
-            return
-
-        uixs: list[pg_unique_index] = [pg_unique_index(**(uix | {
-            'uix_column_name': tuple(uix['uix_column_name'])})) for uix in definition]
-
-        @classmethod
-        def __pg_unique_indexes(cls) -> list[pg_unique_index]:
-            return uixs
-
-        accumulator.add_definition('__pg_unique_indexes', __pg_unique_indexes)
-
-    def get_dependencies(self) -> tuple[str]:
-        return ('extract-unique-index-definition-from-declaration-component', )
-
-
-class TableStoreCheckConstraintsComponent(CommonStoreCheckConstraintsComponent[pg_table]):
-    def get_dependencies(self) -> tuple[str]:
-        return ('extract-check-constraints-component', )
 
 
 class TableStoreExtractedIndexComponent(FlowComponent[pg_table]):
@@ -461,21 +434,34 @@ class TableStoreExtractedIndexComponent(FlowComponent[pg_table]):
         super().__init__('store-extracted-index-component')
 
     def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
-        definition: list[dict[str, Any]] = accumulator.get_definition('indexes', 'extraction')
-        if definition is None:
+        ix_definition: list[dict[str, Any]] = accumulator.get_definition('indexes', 'extraction')
+        ixs = []
+        if ix_definition is not None:
+            ixs: list[pg_index_definition] = [pg_index_definition(**(ix | {
+                'column_name': tuple(ix['column_name'])})) for ix in definition]
+        uix_definition: list[dict[str, Any]] = accumulator.get_definition('unique_indexes', 'extraction')
+        if uix_definition is not None:
+            uixs: list[pg_index_definition] = [pg_index_definition(**(uix | {
+                'column_name': tuple(uix['column_name'])})) for uix in definition]
+            ixs += uixs
+
+        if len(ixs) == 0:
             return
 
-        ixs: list[pg_index] = [pg_index(**(ix | {
-            'ix_column_name': tuple(ix['ix_column_name'])})) for ix in definition]
-
         @classmethod
-        def __pg_indexes(cls) -> list[pg_index]:
+        def __pg_indexes(cls) -> list[pg_index_definition]:
             return ixs
 
         accumulator.add_definition('__pg_indexes', __pg_indexes)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-index-definition-from-declaration-component', )
+        return ('extract-unique-index-definition-from-declaration-component',
+                'extract-index-definition-from-declaration-component')
+
+
+class TableStoreCheckConstraintsComponent(CommonStoreCheckConstraintsComponent[pg_table]):
+    def get_dependencies(self) -> tuple[str]:
+        return ('extract-check-constraints-component', )
 
 
 class TableStoreExtractedForeignKeyComponent(FlowComponent[pg_table]):
@@ -488,15 +474,13 @@ class TableStoreExtractedForeignKeyComponent(FlowComponent[pg_table]):
 
     def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('foreign_keys', 'extraction')
-        if definition is None:
-            return
 
-        fks: list[pg_foreign_key] = [pg_foreign_key(**(fk | {
-            'fk_class_column_name': tuple(fk['fk_class_column_name']),
-            'fk_other_class_column_name': tuple(fk['fk_other_class_column_name'])})) for fk in definition]
+        fks: list[pg_foreign_key_definition] = [] if definition is None else [pg_foreign_key_definition(**(fk | {
+            'class_column_name': tuple(fk['class_column_name']),
+            'other_class_column_name': tuple(fk['other_class_column_name'])})) for fk in definition]
 
         @classmethod
-        def __pg_foreign_keys(cls) -> list[pg_foreign_key]:
+        def __pg_foreign_keys(cls) -> list[pg_foreign_key_definition]:
             return fks
 
         accumulator.add_definition('__pg_foreign_keys', __pg_foreign_keys)
@@ -514,14 +498,11 @@ class TableStoreExtractedInheritedClassesComponent(FlowComponent[pg_table]):
         super().__init__('store-extracted-inherited-classes-component')
 
     def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
-        definition: tuple[type[Any]] = accumulator.get_definition('inherited', 'extraction')
-        if definition is None:
-            return
-        base_classes: tuple[type[Any]] = definition
+        base_classes: tuple[type[Any]] = accumulator.get_definition('inherited', 'extraction')
 
         @classmethod
         def __pg_base_classes(cls) -> tuple[type[Any]]:
-            return base_classes
+            return tuple() if base_classes is None else base_classes
 
         accumulator.add_definition('__pg_base_classes', __pg_base_classes)
 
@@ -539,18 +520,32 @@ class TableStoreExtractedColumnsComponent(FlowComponent[pg_table]):
 
     def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('columns', 'extraction')
-        if definition is None:
-            return
-        columns: list[pg_column] = [pg_column(**col) for col in definition]
+        columns: list[pg_column_definition] = [pg_column_definition(**col) for col in definition]
 
         @classmethod
-        def __pg_columns(cls) -> list[pg_column]:
+        def __pg_columns(cls) -> list[pg_column_definition]:
             return columns
 
         accumulator.add_definition('__pg_columns', __pg_columns)
 
     def get_dependencies(self) -> tuple[str]:
         return ('extract-column-definition-from-declaration-component', )
+
+
+class TableStoreFinalDefinitionComponent(FlowComponent[pg_table]):
+    """
+    Stores final definition
+    """
+
+    def __init__(self):
+        super().__init__('store-final-definition-component')
+
+    def execute(self, target: type[pg_table], accumulator: FlowAccumulator) -> None:
+        definition: dict[str, Any] = accumulator.get_definition('built')
+        accumulator.add_definition('final', {} if definition is None else definition)
+
+    def get_dependencies(self) -> tuple[str]:
+        return ('store-columns-component', )
 
 
 class TableDefinitionFlow(TypeSubclassDefinitionFlow[pg_table]):
@@ -579,12 +574,13 @@ with pg_table_definition_flow.at_work_path('validation') as flow:
         pg_meta.default.nextval,
         pg_meta.comment,
         pg_meta.check]))
-    flow.register(TableValidateFieldsBaseTypeComponent(type_subclass=[
-        pg_enum,
-        pg_composite],
+    flow.register(TableValidateFieldsBaseTypeComponent(
+        type_subclass=[
+            pg_enum,
+            pg_composite],
         type_instance=[
-        pg_builtin,
-        pg_domain]))
+            pg_builtin,
+            pg_domain]))
 
 with pg_table_definition_flow.at_work_path('merge') as flow:
     flow.register(TableMergeInheritedFieldsComponent().critical())
@@ -598,14 +594,17 @@ with pg_table_definition_flow.at_work_path('extraction') as flow:
     flow.register(TableExtractInheritanceDefinitionFromDeclarationComponent())
     flow.register(TableExtractColumnDefinitionFromDeclarationComponent())
 
-with pg_table_definition_flow.at_work_path('final') as flow:
+with pg_table_definition_flow.at_work_path('built') as flow:
     flow.register(TableStoreExtractedPrimaryKeyComponent().critical())
-    flow.register(TableStoreExtractedUniqueIndexComponent())
     flow.register(TableStoreExtractedIndexComponent())
     flow.register(TableStoreExtractedForeignKeyComponent())
     flow.register(TableStoreExtractedInheritedClassesComponent())
     flow.register(TableStoreExtractedColumnsComponent())
     flow.register(TableStoreCheckConstraintsComponent())
 
+with pg_table_definition_flow.at_work_path('') as flow:
+    flow.register(TableStoreFinalDefinitionComponent())
 
-__all__ = {'pg_table_definition_flow': pg_table_definition_flow}
+
+__all__ = {
+    'pg_table_definition_flow': pg_table_definition_flow}

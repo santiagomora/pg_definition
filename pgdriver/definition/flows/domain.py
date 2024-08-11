@@ -29,6 +29,21 @@ class DomainValidateTargetMetaclassComponent(FlowComponent[pg_domain]):
             raise FlowComponentException(self.name, [' or '.join(errors)])
 
 
+class DomainStoreFinalDefinitionComponent(FlowComponent[pg_domain]):
+    """
+    Stores final definition
+    """
+
+    def __init__(self):
+        super().__init__('domain-store-final-definition-component')
+
+    def execute(self, target: type[pg_domain], accumulator: FlowAccumulator) -> None:
+        accumulator.add_definition('final', {})
+
+    def get_dependencies(self) -> tuple[str]:
+        return ('validate-target-metaclass-component', )
+
+
 class DomainDefinitionFlow(TypeInstanceDefinitionFlow[pg_domain]):
     def __init__(self):
         super().__init__('pgdriver-domain-definition-flow')
@@ -38,5 +53,8 @@ pg_domain_definition_flow: DomainDefinitionFlow = DomainDefinitionFlow()
 
 with pg_domain_definition_flow.at_work_path('validation') as flow:
     flow.register(DomainValidateTargetMetaclassComponent())
+
+with pg_domain_definition_flow.at_work_path('') as flow:
+    flow.register(DomainStoreFinalDefinitionComponent())
 
 __all__ = {'pg_domain_definition_flow': pg_domain_definition_flow}

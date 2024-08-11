@@ -1,5 +1,4 @@
 from pgdriver.definition.build import \
-    pg_meta,\
     LiteralRef,\
     FieldRef,\
     AttributeRef,\
@@ -15,6 +14,8 @@ from pgdriver.definition.build import \
     pg_int,\
     pg_text,\
     pg_decimal
+from pgdriver.definition.meta import\
+    pg_meta
 from typing import\
     Optional
 from decimal import\

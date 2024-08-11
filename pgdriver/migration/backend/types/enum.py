@@ -1,7 +1,9 @@
 from pgdriver.definition.build import\
     pg_bigint,\
-    pg_meta,\
-    pg_text
+    pg_text,\
+    pg_int
+from pgdriver.definition.meta import\
+    pg_meta
 from pgdriver.definition.registry import\
     valid_pg_definition
 from typing_extensions import\
@@ -52,6 +54,7 @@ class mgr_enum_value(mgr_attribute):
             name='mgr_enum_value_object_id_fk',
             other_class=mgr_enum,
             other_class_column_name='id')]
+    order: pg_int
     name: Annotated[
         pg_text,
         pg_meta.unique_index('mgr_table_unique_index_name_object_id_uix')]

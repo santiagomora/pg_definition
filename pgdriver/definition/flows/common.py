@@ -7,14 +7,14 @@ from pgdriver.definition.inspection import\
     extract_by_instance_type_from_inherited_classes
 from pgdriver.definition.flows import\
     T
-from pgdriver.definition.build import\
-    pg_meta,\
-    pg_check
+from pgdriver.definition.meta import\
+    pg_meta
 from typing import\
     Any
 from pgdriver.definition.inspection import\
     extract_by_instance_type_from_model_fields_info,\
-    has_classmethod
+    has_classmethod,\
+    extract_type
 
 
 class CommonValidateRestrictedMetadataTypesComponent(FlowComponent[T]):
@@ -95,12 +95,12 @@ class CommonValidateFieldsBaseTypeComponent(FlowComponent[T]):
         for name, info in target.model_fields.items():
             is_subclass_of_required: bool = False
             for required in self._type_subclass:
-                if issubclass(info.annotation, required):
+                if issubclass(extract_type(info.annotation), required):
                     is_subclass_of_required = True
             is_instance_of_required: bool = False
             if not is_subclass_of_required:
                 for required in self._type_instance:
-                    if isinstance(info.annotation, required):
+                    if isinstance(extract_type(info.annotation), required):
                         is_instance_of_required = True
             if is_subclass_of_required or is_instance_of_required:
                 continue
