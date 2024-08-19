@@ -1,6 +1,3 @@
-
-
-
 from abc import\
     ABC,\
     abstractmethod
@@ -23,69 +20,10 @@ from pydantic_core import\
 from pydantic import\
     GetCoreSchemaHandler,\
     ValidationInfo
-from pydantic.fields import\
-    FieldInfo
 from pydantic import\
     BaseModel
-from datetime import\
-    datetime,\
-    time,\
-    date
-from pgdriver.definition.inspection import\
-    extract_by_instance_type_from_inherited_classes,\
-    is_optional,\
-    extract_type
-from numbers import\
-    Number
 from typing_extensions import\
     Self
-from pgdriver.definition.build import\
-    pg_table,\
-    pg_bigint,\
-    pg_int,\
-    pg_decimal,\
-    pg_double,\
-    pg_time,\
-    pg_timetz,\
-    pg_date,\
-    pg_past_date,\
-    pg_future_date,\
-    pg_text,\
-    pg_timestamp,\
-    pg_past_timestamp,\
-    pg_future_timestamp,\
-    pg_timestamptz,\
-    pg_past_timetstampz,\
-    pg_bool,\
-    pg_composite,\
-    pg_json,\
-    pg_future_timestamptz,\
-    pg_sequence
-from pgdriver.definition.extraction.base import\
-    pg_table_index_type,\
-    pg_table_foreign_key_action
-
-
-type_compatibility: dict[type, type] = {
-    pg_bigint: Number,
-    pg_int: Number,
-    pg_decimal: Number,
-    pg_double: Number,
-    pg_time: time,
-    pg_timetz: time,
-    pg_date: date,
-    pg_past_date: date,
-    pg_future_date: date,
-    pg_text: str,
-    pg_timestamp: datetime,
-    pg_past_timestamp: datetime,
-    pg_future_timestamp: datetime,
-    pg_timestamptz: datetime,
-    pg_past_timetstampz: datetime,
-    pg_bool: bool,
-    pg_composite: pg_composite,
-    pg_json: str,
-    pg_future_timestamptz: datetime}
 
 
 class SupportLen(Protocol):
@@ -185,7 +123,7 @@ class Reference(BaseModel, Generic[T]):
         pass
 
 
-class FieldRef(Reference[T]):
+class field_(Reference[T]):
     def __init__(self, field_name: str) -> None:
         super().__init__()
         # el field debe ser un atributo de la clase que registra la anotacion
@@ -207,7 +145,7 @@ class FieldRef(Reference[T]):
         return self._field_name
 
 
-class LiteralRef(Reference[T]):
+class literal_(Reference[T]):
     def __init__(self, literal: T) -> None:
         super().__init__()
         self._literal = literal
@@ -341,35 +279,38 @@ class mod_(OperationRef[SMOD]):
         return f'({operation})'
 
 
-class Specification(BaseModel, Generic[T]):
-    # def _extract_underlying_type(self, annotation: type) -> set[type]:
-    #     under: set[type] = set()
-    #     if get_origin(annotation) == Union:
-    #         for t in get_args(annotation):
-    #             under = under.union(self._extract_underlying_type(t))
-    #     elif get_origin(annotation) == Annotated:
-    #         under = set((get_args(annotation)[0],))
-    #     else:
-    #         under = set((annotation, ))
-    #     return under
+class _TypeCompatibility(dict[type, type]):
+    def register(self, for_type: type, compatible_with: type) -> None:
+        if for_type in self:
+            raise Exception(f'Cant overwrite {for_type} compatibility.')
+        self[for_type] = compatible_with
 
-    def check_type(self, annotated_type: type, check_type: type) -> None:
+    def get_supertype(self, for_type: type) -> Optional[type]:
+        for t in self:
+            if issubclass(for_type, t):
+                return t
+        return None
+
+
+class Predicate(BaseModel, Generic[T]):
+    def check_type(self, annotated_type: type, check_type: type, type_compatibility: dict[type, type]) -> None:
         if check_type == annotated_type:
             return
         errors: list[str] = []
-        if isinstance(annotated_type, pg_domain):
-            check_type = check_type.__bases__[0]
-        if not isinstance(annotated_type, pg_builtin):
-            errors.append('Check type must be a pg_builtin instance.')
         if annotated_type not in type_compatibility:
-            errors.append(f'Compatibility not configured for type {annotated_type!r}')
+            annotated_type = type_compatibility.get_supertype(annotated_type)
+            if annotated_type is None:
+                errors.append(f'Compatibility not configured for type {annotated_type!r}')
         if check_type not in type_compatibility:
-            errors.append(f'Compatibility not configured for type {annotated_type!r}')
+            source_type = type_compatibility.get_supertype(check_type)
+            if source_type is None:
+                errors.append(f'Compatibility not configured for type {annotated_type!r}')
         if len(errors) > 0:
-            raise TypeError('Several errors detected on pg_meta.check definition: ' + ', '.join(errors))
+            raise TypeError('Check definition error: ' + ', '.join(errors))
         annotated_compat: type = type_compatibility[annotated_type]
         check_compat: type = type_compatibility[check_type]
-        return issubclass(annotated_compat, check_compat) or issubclass(check_compat, annotated_compat)
+        if not (issubclass(annotated_compat, check_compat) or issubclass(check_compat, annotated_compat)):
+            raise TypeError(f'Check definition error: types {annotated_type} and {check_type} are not compatible')
 
     @abstractmethod
     def as_str(self, column_name: str) -> str:
@@ -381,12 +322,12 @@ class Specification(BaseModel, Generic[T]):
         pass
 
 
-class and_(Specification[T]):
-    def __init__(self, *specs: Specification[T]) -> None:
+class and_(Predicate[T]):
+    def __init__(self, *specs: Predicate[T]) -> None:
         super().__init__()
         if len(specs) < 2:
             raise ValueError
-        self._specs: tuple[Specification[T], ...] = specs
+        self._specs: tuple[Predicate[T], ...] = specs
 
     def check_value(self, value: T, info: dict[str, Any]) -> None:
         errors: list[str] = []
@@ -399,16 +340,16 @@ class and_(Specification[T]):
             raise ValueError('\n'.join(errors))
 
     def as_str(self, column_name: str) -> str:
-        spec: str = ' AND '.join([spec.as_str(column_name) for spec in self._specs])
-        return f'({spec})'
+        spec: str = ' AND '.join([f'({spec.as_str(column_name)})' for spec in self._specs])
+        return spec
 
 
-class or_(Specification[T]):
-    def __init__(self, *specs: Specification[T]) -> None:
+class or_(Predicate[T]):
+    def __init__(self, *specs: Predicate[T]) -> None:
         super().__init__()
         if len(specs) < 2:
             raise ValueError
-        self._specs: tuple[Specification[T], ...] = specs
+        self._specs: tuple[Predicate[T], ...] = specs
 
     def check_value(self, value: T, info: dict[str, Any]) -> None:
         errors: list[str] = []
@@ -421,60 +362,60 @@ class or_(Specification[T]):
             raise ValueError('\n'.join(errors))
 
     def as_str(self, column_name: str) -> str:
-        spec: str = ' OR '.join([spec.as_str(column_name) for spec in self._specs])
-        return f'({spec})'
+        spec: str = ' OR '.join([f'({spec.as_str(column_name)})' for spec in self._specs])
+        return spec
 
 
-class lt_(Specification[SLT]):
+class lt_(Predicate[SLT]):
     def __init__(self, ref: Reference[SLT]) -> None:
         super().__init__()
         self._ref = ref
 
     def check_value(self, value: SLT, info: dict[str, Any]) -> None:
         wrapped: SLT = self._ref.value(info)
-        if not wrapped < value:
+        if not value < wrapped:
             raise ValueError(f'Less than check error: value "{value}" is greater or equal than "{wrapped}"')
 
     def as_str(self, column_name: str) -> str:
         return f'{column_name} < {self._ref.as_str(column_name)}'
 
 
-class gt_(Specification[SGT]):
+class gt_(Predicate[SGT]):
     def __init__(self, ref: Reference[SGT]) -> None:
         super().__init__()
         self._ref = ref
 
     def check_value(self, value: SGT, info: dict[str, Any]) -> None:
         wrapped: SGT = self._ref.value(info)
-        if not wrapped > value:
+        if not value > wrapped:
             raise ValueError(f'Greater than check error: value "{value}" is less or equal than "{wrapped}"')
 
     def as_str(self, column_name: str) -> str:
         return f'{column_name} > {self._ref.as_str(column_name)}'
 
 
-class ge_(Specification[SGE]):
+class ge_(Predicate[SGE]):
     def __init__(self, ref: Reference[SGE]) -> None:
         super().__init__()
         self._ref = ref
 
     def check_value(self, value: SGE, info: dict[str, Any]) -> None:
         wrapped: SGE = self._ref.value(info)
-        if not wrapped >= value:
+        if not value >= wrapped:
             raise ValueError(f'Greater than equal check error: value "{value}" is less than "{wrapped}"')
 
     def as_str(self, column_name: str) -> str:
         return f'{column_name} >= {self._ref.as_str(column_name)}'
 
 
-class le_(Specification[SLE]):
+class le_(Predicate[SLE]):
     def __init__(self, ref: Reference[SLE]) -> None:
         super().__init__()
         self._ref = ref
 
     def check_value(self, value: SLE, info: dict[str, Any]) -> None:
         wrapped: SLE = self._ref.value(info)
-        if not wrapped <= value:
+        if not value <= wrapped:
             raise ValueError(f'Less than equal check error: value "{value}" is greater than "{wrapped}"')
 
     def as_str(self, column_name: str) -> str:
@@ -483,7 +424,7 @@ class le_(Specification[SLE]):
 
 # f'Check predicate types must be compatible "{source!r}"'
 # f'Value "{value!r}" invalid for field "{info.field_name}"'
-class eq_(Specification[SEQ]):
+class eq_(Predicate[SEQ]):
     def __init__(self, ref: Reference[SEQ]) -> None:
         super().__init__()
         self._ref = ref
@@ -497,7 +438,7 @@ class eq_(Specification[SEQ]):
         return f'{column_name} = {self._ref.as_str(column_name)}'
 
 
-class ne_(Specification[SNE]):
+class ne_(Predicate[SNE]):
     def __init__(self, ref: Reference[SNE]) -> None:
         super().__init__()
         self._ref = ref
@@ -511,8 +452,8 @@ class ne_(Specification[SNE]):
         return f'{column_name} <> {self._ref.as_str(column_name)}'
 
 
-class attr_(Specification[T], Generic[T, V]):
-    def __init__(self, to_call: Attribute[T, V], spec: Specification[V]):
+class attr_(Predicate[T], Generic[T, V]):
+    def __init__(self, to_call: Attribute[T, V], spec: Predicate[V]):
         super().__init__()
         self._to_call = to_call
         self._spec = spec
@@ -528,36 +469,59 @@ class attr_(Specification[T], Generic[T, V]):
         return self._spec.as_str(left_operand)
 
 
-@dataclass(kw_only=True)
-class check(Generic[T]):
-    predicate: Specification[T]
-    name: str
+class pg_check(ABC, Generic[T]):
+    type_compatibility: _TypeCompatibility = _TypeCompatibility()
 
-    def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        if self.predicate is None:
-            raise ValueError('Check predicate cannot be empty')
-        # if not isinstance(source, pg_table) and not isinstance(source, pg_composite):
-            # raise ValueError(f'Meta {source.__name__} must be used on a pg_table or a pg_composite instance field')
+    def __init__(self, *, name: str, predicate: Predicate[T]) -> None:
+        self.predicate = predicate
+        self.name = name
+        self._parent_check: Optional[pg_check] = None
+
+    def get_parent(self) -> Optional['pg_check']:
+        return self._parent_check
+
+    def set_parent(self, other: 'pg_check') -> 'pg_check':
+        self._parent_check = other
+        return other
+
+    def as_str(self, field_name: str):
+        return f'({self.predicate.as_str(field_name)})'
+
+
+class pg_model_field_check(pg_check, Generic[T]):
+    def __get_pydantic_core_schema__(self, source: Type[T],
+                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
         schema = handler(source)
         # ignore class pg_meta.check[T] has no attribute __orig_class__ error
         # raised by mypy
-        self.predicate.check_type(source, get_args(self.__orig_class__)[0])
-        return core_schema.with_info_after_validator_function(
-            function=self.validate,
-            schema=schema,
-            field_name=handler.field_name)
+        self.predicate.check_type(source, get_args(self.__orig_class__)[0],
+                                  pg_check.type_compatibility)
+        return core_schema.with_info_after_validator_function(function=self.validate,
+                                                              schema=schema,
+                                                              field_name=handler.field_name)
 
     def validate(self, value: T, info: ValidationInfo) -> T:
         self.predicate.check_value(value, info.data)
         return value
 
-    def merge(self, other: list['check']) -> Self:
-        if len(other) <= 0:
-            return self
-        self.predicate = and_(self.predicate, *tuple(other))
-        return self
+
+class pg_type_check(pg_check, Generic[T]):
+    def validate_value(self, value: T) -> T:
+        try:
+            self.predicate.check_value(value, {})
+        except ValueError as e:
+            raise ValueError(f'{self.name}: {str(e)}')
+        if self._parent_check is not None:
+            return self._parent_check.validate_value(value)
+        return value
+
+    def check_valid_constraint_definition(self, target: type) -> None:
+        # shouldnt propagate to parent as parent check constraint was validated
+        # on a different domain, we can assume is valid by now
+        self.predicate.check_type(target, get_args(self.__orig_class__)[0],
+                                  pg_check.type_compatibility)
 
 
 @dataclass
-class comment:
+class pg_comment:
     value: str

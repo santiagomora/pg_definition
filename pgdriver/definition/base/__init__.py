@@ -1,68 +1,14 @@
-from pgdriver.definition.build.composite import\
-    pg_composite,\
-    pg_composite_meta
-from pgdriver.definition.build.table import\
-    pg_table,\
-    pg_table_meta
-from pgdriver.definition.build.enum import\
-    pg_enum
-from pgdriver.definition.build.builtin import\
-    pg_int,\
-    pg_bigint,\
-    pg_smallint,\
-    pg_json,\
-    pg_text,\
-    pg_double,\
-    pg_bytes,\
-    pg_timestamp,\
-    pg_past_timestamp,\
-    pg_future_timestamp,\
-    pg_timestamptz,\
-    pg_past_timetstampz,\
-    pg_future_timestamptz,\
-    pg_time,\
-    pg_timetz,\
-    pg_date,\
-    pg_past_date,\
-    pg_future_date,\
-    pg_bool,\
-    pg_decimal
-from pgdriver.definition.build.sequence import\
-    pg_bigint_sequence,\
-    pg_int_sequence,\
-    pg_smallint_sequence,\
-    with_pg_max_value,\
-    with_pg_min_value
+# General updates:
+# 1. no need to use valid_pg_definition, subclassing a pg type will trigger definition
+# flow to be executed on subclass
 
+# Updates on pg_enum, pg_composite, pg_builtin
+# There is two interpretations now according to how type inheritance is declared:
+# 1. inheriting the type directly treats the type as a new base type
+# 2. inheriting a type subtype treats the type as a new domain, check constraints
+# need to be merged, comments on the other hand dont
 
-__all__ = {
-    'pg_composite':          pg_composite,
-    'pg_composite_meta':     pg_composite_meta,
-    'pg_table':              pg_table,
-    'pg_table_meta':         pg_table_meta,
-    'pg_enum':               pg_enum,
-    'pg_int':                pg_int,
-    'pg_bigint':             pg_bigint,
-    'pg_smallint':           pg_smallint,
-    'pg_json':               pg_json,
-    'pg_text':               pg_text,
-    'pg_double':             pg_double,
-    'pg_bytes':              pg_bytes,
-    'pg_timestamp':          pg_timestamp,
-    'pg_past_timestamp':     pg_past_timestamp,
-    'pg_future_timestamp':   pg_future_timestamp,
-    'pg_timestamptz':        pg_timestamptz,
-    'pg_past_timetstampz':   pg_past_timetstampz,
-    'pg_future_timestamptz': pg_future_timestamptz,
-    'pg_time':               pg_time,
-    'pg_timetz':             pg_timetz,
-    'pg_date':               pg_date,
-    'pg_past_date':          pg_past_date,
-    'pg_future_date':        pg_future_date,
-    'pg_bool':               pg_bool,
-    'pg_decimal':            pg_decimal,
-    'pg_bigint_sequence':    pg_bigint_sequence,
-    'pg_int_sequence':       pg_int_sequence,
-    'pg_smallint_sequence':  pg_smallint_sequence,
-    'with_pg_max_value':     with_pg_max_value,
-    'with_pg_min_value':     with_pg_min_value}
+# Updates on pg_sequence
+# 1. in order to declare a sequence we need to subclass pg_bigint_sequence, pg_int_sequence
+# or pg_smallint_sequence, we cant declare meta types with pg_sequence directly, we cant
+# declare subclasses of a pg_sequence subclass

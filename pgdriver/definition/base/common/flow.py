@@ -1,13 +1,8 @@
-from collections import\
-    OrderedDict
 from abc import\
-    ABC,\
     abstractmethod
 from typing import\
     Any,\
     Optional,\
-    Generic,\
-    TypeVar,\
     ContextManager
 from typing_extensions import\
     Self
@@ -20,8 +15,6 @@ import pprint
 #     heappop
 from contextlib import\
     contextmanager
-from pgdriver.definition.inspection import\
-    get_type_arguments
 # from pgdriver.definition.flows import\
 #     DefinitionFlowRegistry
 # from pgdriver.definition.flows.table import\
@@ -38,7 +31,7 @@ from pgdriver.definition.inspection import\
 #     FlowAccumulator
 
 
-class FlowComponentException(Exception):
+class FlowNodeException(Exception):
     def __init__(self, name, error_list):
         Exception.__init__(self, ', '.join(error_list))
         self.error_list = error_list
@@ -46,11 +39,11 @@ class FlowComponentException(Exception):
 
 
 class FlowEndException(Exception):
-    def __init__(self, errors: dict[str, dict[str, FlowComponentException]]):
+    def __init__(self, errors: dict[str, dict[str, FlowNodeException]]):
         Exception.__init__(self, pprint.pformat(errors))
         self._errors = errors
 
-    def get_error(self, flow_name: str, component_name: str) -> Optional[FlowComponentException]:
+    def get_error(self, flow_name: str, component_name: str) -> Optional[FlowNodeException]:
         if flow_name in self._errors:
             if component_name in self._errors[flow_name]:
                 return self._errors[flow_name][component_name]
@@ -60,9 +53,6 @@ class FlowEndException(Exception):
 class FlowAccumulatorErrorsPolicy(Enum):
     LOG_INFO = auto()
     END_FLOW = auto()
-
-
-T = TypeVar('T')
 
 
 class HandlesWorkPath:
@@ -84,19 +74,6 @@ class FlowAccumulator(HandlesWorkPath):
         self._errors: dict[str, dict[str, str]] = dict()
         self._on_type = on_type
 
-    # def __str__(self):
-    #     errors: list[str] = []
-    #     for flow in self._errors:
-    #         errors.append(f'Errors in flow: {flow}')
-    #         cmp_errors: list[str] = []
-    #         for component in self._errors[flow]:
-    #             cmp_errors.append(f'\tErrors in component: {component}:')
-    #             cmp_errors += [f'\t\t{str(e)}' for e in self._errors[flow][component].error_list]
-    #         errors.append('\n\t'.join(cmp_errors))
-    #     definition: str = pprint.pformat(self._definition)
-    #     error_str: str = '\n\t'.join(errors)
-    #     return f'Flow accumulator for type {self._on_type}:\nDefinition:\n{definition}\nErrors:\n\t{error_str}'
-
     @property
     def errors(self) -> dict[str, Any]:
         return self._errors
@@ -108,7 +85,8 @@ class FlowAccumulator(HandlesWorkPath):
     def has_errors(self):
         return len(self._errors.keys()) != 0
 
-    def get_definition(self, name: Optional[str] = None, abspath: Optional[str] = None) -> Optional[Any]:
+    def get_definition(self, name: Optional[str] = None,
+                       abspath: Optional[str] = None) -> Optional[Any]:
         dic: dict[str, Any] = self._definition
         if name is None:
             return dic
@@ -145,21 +123,21 @@ class FlowAccumulator(HandlesWorkPath):
         dic[name] = definition
         return self
 
-    def add_exception(self, flow_name: str, exception: FlowComponentException) -> Self:
+    def add_exception(self, flow_name: str, exception: FlowNodeException) -> Self:
         flow_errors = self._errors.get(flow_name, {})
         flow_errors[exception.component_name] = exception
         self._errors[flow_name] = flow_errors
         return self
 
 
-class FlowComponent(ABC):
-    def __init__(self, name: str) -> None:
-        self._name = name
+class DefinitionFlowNode:
+    def __init__(self, n_choices: int, name: str) -> None:
+        self.accumulator_path = ''
+        self.name = name
+        self._n_choices = n_choices
         self._accumulator_errors_policy = FlowAccumulatorErrorsPolicy.LOG_INFO
-
-    @property
-    def name(self) -> str:
-        return self._name
+        self._nodes = dict[str, DefinitionFlowNode]()
+        self._registered_node_names = set[str]()
 
     def critical(self) -> Self:
         self._accumulator_errors_policy = FlowAccumulatorErrorsPolicy.END_FLOW
@@ -174,140 +152,99 @@ class FlowComponent(ABC):
     def get_dependencies(self) -> tuple[str]:
         return tuple()
 
+    def _add_node(self, other: 'DefinitionFlowNode') -> None:
+        if len(self._nodes.keys()) > self._n_choices:
+            raise Exception(f'Definition node {self.name} maximum size reached.')
+        if other.name in self._nodes:
+            raise Exception(f'Definition Node {other.name} already defined in {self.name}')
+        self._nodes[other.name] = other
+
+    def print_tree(self, level: int = 0) -> None:
+        indent: str = '  '*level
+        critical = ''
+        if self._accumulator_errors_policy == FlowAccumulatorErrorsPolicy.END_FLOW:
+            critical = ' (critical)'
+        print(f'{indent}{self.name}{critical}')
+        for node in self._nodes:
+            self._nodes[node].print_tree(level+1)
+
     @abstractmethod
-    def execute(self, target: type[T], accumulator: FlowAccumulator) -> None:
+    def execute(self, on_type: type, accumulator: FlowAccumulator) -> None:
+        pass
+
+    @abstractmethod
+    def set_next(self, other: 'DefinitionFlowNode') -> Self:
+        pass
+
+    @abstractmethod
+    def get_next(self, accumulator: FlowAccumulator) -> Optional['DefinitionFlowNode']:
+        """
+        Next node to execute will be decided taking into account variables
+        inside the accumulator
+        """
         pass
 
 
-class DefinitionFlow(HandlesWorkPath):
-    def __init__(self, name: str) -> None:
-        HandlesWorkPath.__init__(self)
-        self._name = name
-        # self._target = get_type_arguments(self)[0]
-        self._components: OrderedDict[str, FlowComponent[T]] = OrderedDict()
+class SingleChoiceDefinitionFlowNode(DefinitionFlowNode):
+    def __init__(self,
+                 name: str) -> None:
+        super().__init__(1, name)
 
-    @property
-    def target(self) -> type[T]:
-        return self._target
+    def set_next(self, other: DefinitionFlowNode) -> DefinitionFlowNode:
+        self._add_node(other)
+        return other
 
-    @property
-    def name(self) -> str:
-        return self._name
+    def get_next(self, accumulator: FlowAccumulator) -> Optional[DefinitionFlowNode]:
+        if len(self._nodes) <= 0:
+            return None
+        return list(self._nodes.values())[0]
 
-    # def __repr__(self):
-    #     return f'FlowComponent(target={self.target})'
 
-    # def __lt__(self, other: 'DefinitionFlow') -> bool:
-    #     return self.applies_to(other.target)
+class MultipleChoiceDefinitionFlowNode(DefinitionFlowNode):
+    def set_next(self, other: DefinitionFlowNode) -> DefinitionFlowNode:
+        self._add_node(other)
+        return self
 
-    def register(self, component: FlowComponent[T]) -> None:
-        if component.name in self._components:
-            raise Exception(f'Element of type {type(component)} already declared')
-        existing_elem_of_type: Optional[str] = None
-        for name, comp in self._components.items():
-            if type(comp) == type(component):
-                existing_elem_of_type = component.name
-                break
-        if existing_elem_of_type is not None:
-            raise Exception(f'Component of type {type(component)} already declared in flow {self._name} with name {existing_elem_of_type}')
-        dependencies: set[str] = set(component.get_dependencies())
-        existing: set[str] = set(self._components.keys())
-        if len(existing.intersection(dependencies)) != len(dependencies) and len(dependencies) != 0:
-            missing: str = ", ".join(dependencies.difference(existing))
-            raise Exception(f'Dependencies not met for component "{component.name}", missing: {missing}')
-        component.accumulator_path = self._work_path
-        self._components[component.name] = component
-        self._components.move_to_end(component.name)
 
-    def execute(self, on_type: type[T], accumulator: FlowAccumulator) -> None:
-        # if not self.applies_to(on_type):
-            # raise Exception(f'Type {on_type} must be a subclass of {self.target} to be executed in flow {self.name}')
-        i: int = 0
-        j: int = 0
-        components: list[FlowComponent[T]] = [c for c in self._components.values()]
-        while i < len(components):
-            j = i
-            last_accumulator_path: str = components[j].accumulator_path
+class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
+    def execute(self, on_type: type, accumulator: FlowAccumulator) -> None:
+        node: DefinitionFlowNode = self.get_next(accumulator)
+        executed: set[str] = set[str]()
+        while node is not None:
+            last_accumulator_path: str = node.accumulator_path
             with accumulator.at_work_path(last_accumulator_path) as acc:
-                while j < len(components) and last_accumulator_path == components[j].accumulator_path:
-                    # print(j, components[j].name, last_accumulator_path)
+                while node is not None and\
+                      last_accumulator_path == node.accumulator_path:
                     try:
-                        components[j].initialize(acc)
-                        components[j].execute(on_type, acc)
-                    except FlowComponentException as e:
-                        accumulator.add_exception(self._name, e)
+                        node.initialize(acc)
+                        dependencies: set[str] = set(node.get_dependencies())
+                        if not dependencies.issubset(executed):
+                            raise RuntimeError(f'Dependencies not met for node {node.name}')
+                        executed.add(node.name)
+                        node.execute(on_type, acc)
+                    except FlowNodeException as e:
+                        accumulator.add_exception(self.name, e)
                     except FlowEndException as e:
                         raise e
-                    j += 1
-            i = j
-
-    # @abstractmethod
-    # def applies_to(self, other: 'DefinitionFlow'):
-    #     pass
+                    except RuntimeError as e:
+                        raise e
+                    node = node.get_next(acc)
 
 
-# class TypeSubclassDefinitionFlow(DefinitionFlow[T]):
-#     def applies_to(self, tp: type):
-#         return issubclass(tp, self.target)
-# 
-# 
-# class TypeInstanceDefinitionFlow(DefinitionFlow[T]):
-#     def applies_to(self, tp: type):
-#         return isinstance(tp, self.target)
+class DefinitionFlowNodeFactory(HandlesWorkPath):
+    def get_definition_node(self, cls: type[DefinitionFlowNode], *args,
+                            **kwargs) -> DefinitionFlowNode:
+        instance = cls(*args, **kwargs)
+        instance.accumulator_path = self._work_path
+        return instance
 
 
-# se asocia el definition context del type con el definition context del type padre
-# se asume que el type a registrar es parte de una definicion valida
-# class DefinitionFlowRegistry:
-#     def __init__(self, name: str) -> None:
-#         self._name = name
-#         self._flows: dict[type, DefinitionFlow] = {}
-# 
-#     def register(self, flow: DefinitionFlow) -> None:
-#         if flow.target in self._flows:
-#             raise Exception(f'Context registry: {flow.target} definition flow already defined: {self[flow.target]._name}')
-#         self._flows[flow.target] = flow
-# 
-#     def execute_flow(self, on_type: type) -> dict[Any, Any]:
-#         execute_flows: list[DefinitionFlow] = []
-#         accumulator: FlowAccumulator = FlowAccumulator(on_type)
-#         for flow_target in self._flows:
-#             if self._flows[flow_target].applies_to(on_type):
-#                 heappush(execute_flows, self._flows[flow_target])
-#         if len(execute_flows) == 0:
-#             raise Exception(f'Context registry: definition flows not defined for {on_type}')
-#         while len(execute_flows) > 0:
-#             flow = heappop(execute_flows)
-#             flow.execute(on_type, accumulator)
-#         return accumulator
-# 
-# 
-# pg_driver_definition_flow_registry = DefinitionFlowRegistry('pgdriver-definition-flow-registry')
-# 
-# pg_driver_definition_flow_registry.register(pg_table_definition_flow)
-# pg_driver_definition_flow_registry.register(pg_enum_definition_flow)
-# pg_driver_definition_flow_registry.register(pg_composite_definition_flow)
-# pg_driver_definition_flow_registry.register(pg_domain_definition_flow)
-# pg_driver_definition_flow_registry.register(pg_sequence_definition_flow)
-# 
-# 
-# def valid_pg_definition(wrapped_cls: type):
-#     accumulator: FlowAccumulator = pg_driver_definition_flow_registry.execute_flow(wrapped_cls)
-#     final_definition: dict[str, Any] = accumulator.get_definition('final')
-#     for name in final_definition:
-#         setattr(wrapped_cls, name, final_definition[name])
-#     return wrapped_cls
-# 
-# 
-# __all__ = {
-#     'valid_pg_definition': valid_pg_definition}
-# 
-# # 
-# # class test:
-# #     def __init_subclass__(cls, *args, **kwargs):
-# #         super().__init_subclass__(*args, **kwargs)
-# #         print('culo')
-# # 
-# # 
-# # class test1(test):
-# #     pass
+def execute_definition_flow(on_type: type, root: RootDefinitionFlowNode) -> dict[str, Any]:
+    accumulator: FlowAccumulator = FlowAccumulator(on_type)
+    root.execute(on_type, accumulator)
+    final: dict[str, Any] = accumulator.get_definition('final')
+
+    @classmethod
+    def __pg_definition(cls) -> dict[str, Any]:
+        return final
+    setattr(on_type, '__pg_definition', __pg_definition)

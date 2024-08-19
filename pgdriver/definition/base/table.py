@@ -3,49 +3,12 @@ from typing import\
     Generic,\
     get_args,\
     Optional,\
-    TypeVar
-from pgdriver.definition.flows import\
-    FlowComponent,\
-    FlowAccumulator,\
-    FlowComponentException
-from pgdriver.definition.flows.common import\
-    CommonValidateRestrictedMetadataTypesComponent,\
-    CommonValidateUniqueMetadataTypesComponent,\
-    CommonValidateFieldsBaseTypeComponent,\
-    CommonExtractCheckConstraintsComponent,\
-    CommonStoreCheckConstraintsComponent,\
-    ValidatesConflictingDefinitions
-from pgdriver.definition.build import\
-    pg_domain,\
-    pg_composite,\
-    pg_enum,\
-    pg_builtin
-from pgdriver.definition.extraction.base import\
-    pg_column_definition,\
-    pg_foreign_key_definition,\
-    pg_primary_key_definition,\
-    pg_index_definition
-from typing import\
+    TypeVar,\
     Any
-from pgdriver.definition.inspection import\
-    extract_by_instance_type_from_model_fields_info,\
-    aggregate,\
-    ordered_set_accumulator,\
-    key_by,\
-    extract_by_instance_type_from_inherited_classes,\
-    extract_first_instance_from_field_metadata,\
-    extract_definition_fields,\
-    extract_by_instance_type_from_list,\
-    extract_first_appearance_from_list
 from pydantic import\
     BaseModel
-from pgdriver.definition.flow import\
-    DefinitionFlow
 from dataclasses import\
     dataclass
-from pgdriver.definition.common.meta import\
-    check,\
-    comment
 from pydantic_core import\
     core_schema
 from pydantic import\
@@ -53,18 +16,62 @@ from pydantic import\
     ValidationInfo
 from pydantic.fields import\
     FieldInfo
-from pgdriver.definition.inspection import\
+from .common.flow import\
+    SingleChoiceDefinitionFlowNode,\
+    FlowAccumulator,\
+    DefinitionFlowNodeFactory,\
+    FlowNodeException,\
+    DefinitionFlowNode,\
+    RootDefinitionFlowNode
+from .common.node import\
+    CommonValidateRestrictedMetadataTypesNode,\
+    CommonValidateUniqueMetadataTypesNode,\
+    CommonValidateFieldsBaseTypeNode,\
+    CommonExtractCheckConstraintsNode,\
+    CommonStoreCheckConstraintsNode,\
+    ValidatesConflictingDefinitions,\
+    CommonMergeInheritedFieldsNode
+from .composite import\
+    pg_composite
+from .enums import\
+    pg_enum
+from .builtin import\
+    pg_builtin
+from ..extraction.base import\
+    pg_column_definition,\
+    pg_foreign_key_definition,\
+    pg_primary_key_definition,\
+    pg_index_definition
+from ..inspection import\
+    extract_by_instance_type_from_model_fields_info,\
+    aggregate,\
+    ordered_set_accumulator,\
+    key_by,\
+    extract_by_instance_type_from_inherited_classes,\
+    extract_first_instance_from_field_metadata,\
     is_optional,\
     extract_type
-from pgdriver.definition.build import\
-    pg_table,\
+from .common.meta import\
+    pg_model_field_check,\
+    pg_comment
+from .sequence import\
     pg_sequence
-from pgdriver.definition.extraction.base import\
+from ..extraction.base import\
     pg_table_index_type,\
     pg_table_foreign_key_action
 
 
 T = TypeVar('T')
+
+
+_pg_table_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('table-definition-flow')
+
+
+class pg_table(BaseModel, frozen=True):
+    def __init_subclass__(cls, *args, **kwargs):
+        super().__init_subclass__(*args, **kwargs)
+        accumulator: FlowAccumulator = FlowAccumulator(cls)
+        _pg_table_definition_flow_root.execute(cls, accumulator)
 
 
 class pg_table_meta:
@@ -106,10 +113,10 @@ class pg_table_meta:
             # raised by mypy
             return schema
 
-    class check(check):
+    class check(pg_model_field_check):
         pass
 
-    class comment(comment):
+    class comment(pg_comment):
         pass
 
     class default:
@@ -184,18 +191,8 @@ class pg_table_meta:
                 return consistent
 
 
-pg_table_definition_flow: DefinitionFlow = DefinitionFlow('pgdriver-table-definition-flow')
-
-
-class pg_table(BaseModel):
-    def __init_subclass__(cls, *args, **kwargs):
-        super().__init_subclass__(*args, **kwargs)
-        accumulator: FlowAccumulator = FlowAccumulator()
-        pg_table_definition_flow.execute(cls, accumulator)
-
-
 # una tabla puede heredar unicamente de otra tabla
-# class TableValidateTypeInheritanceComponent(FlowComponent[T]):
+# class _TableValidateTypeInheritanceNode(SingleChoiceDefinitionFlowNode[T]):
 #     """
 #     Las clases pueden tener herencia cruzada por ejemplo heredar de un composite y table
 #     a la vez, esto es ilegal, esta validacion la corremos al momento de definir el 
@@ -204,11 +201,11 @@ class pg_table(BaseModel):
 #     """
 # 
 #     def __init__(self, base_class: type):
-#         super().__init__('validate-type-inheritance-component')
+#         super().__init__('validate-type-inheritance-node')
 # 
 #     def execute(self, cls: type, accumulator: FlowAccumulator) -> None:
 #         pass
-class TableValidateConsistentBaseClassesComponent(FlowComponent):
+class _TableValidateConsistentBaseClassesNode(SingleChoiceDefinitionFlowNode):
     """
     We must ensure that target definition inherits from classes with the same 
     base class. Also we must validate that base classes columns/fields wont
@@ -216,7 +213,7 @@ class TableValidateConsistentBaseClassesComponent(FlowComponent):
     """
 
     def __init__(self):
-        super().__init__('validate-consistent-base-classes-component')
+        super().__init__('table-validate-consistent-base-classes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
@@ -238,157 +235,84 @@ class TableValidateConsistentBaseClassesComponent(FlowComponent):
                 base_cls_str: str = ', '.join(field_dict[field])
                 errors.append(f'Field {field} declared in multiple base classes: {base_cls_str}')
         if len(errors) > 0:
-            raise FlowComponentException(self.name, errors)
+            raise FlowNodeException(self.name, errors)
 
 
-class TableValidateExistingColumnsComponent(FlowComponent):
+class _TableValidateExistingColumnsNode(SingleChoiceDefinitionFlowNode):
     """
     We must ensure that target definition has fields
     """
 
     def __init__(self):
-        super().__init__('validate-existing-columns-component')
+        super().__init__('table-validate-existing-columns-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         if len(target.model_fields.keys()) <= 0:
-            raise FlowComponentException(self.name, [f'Class {target} must define columns.'])
+            raise FlowNodeException(self.name, [f'Class {target} must define columns.'])
 
 
-class TableValidateRestrictedMetadataTypesComponent(CommonValidateRestrictedMetadataTypesComponent):
-    pass
+class _TableValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
+    def __init__(self,
+                 restricted: list[type]):
+        super().__init__('table-validate-existing-columns-node',
+                         restricted)
 
 
-class TableValidateUniqueMetadataTypesComponent(CommonValidateUniqueMetadataTypesComponent):
-    pass
+class _TableValidateUniqueMetadataTypesNode(CommonValidateUniqueMetadataTypesNode):
+    def __init__(self,
+                 unique: list[type]):
+        super().__init__('table-validate-existing-columns-node',
+                         unique)
 
 
-class TableValidateFieldsBaseTypeComponent(CommonValidateFieldsBaseTypeComponent):
-    pass
+class _TableValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
+    def __init__(self,
+                 *,
+                 type_subclass: list[type],
+                 type_instance: list[type]):
+        super().__init__('table-validate-existing-columns-node',
+                         type_subclass=type_subclass,
+                         type_instance=type_instance)
 
 
-class TableMergeInheritedFieldsComponent(FlowComponent):
+class _TableDependsOnValidationNodes:
+    def get_dependencies(self) -> tuple[str]:
+        return ('table-validate-consistent-base-classes-node',
+                'table-validate-restricted-metadata-types-node',
+                'table-validate-unique-metadata-types-node',
+                'table-validate-fields-base-type-node',
+                'table-merge-inherited-fields-node',
+                'table-validate-existing-columns-node')
+
+
+class _TableMergeInheritedFieldsNode(CommonMergeInheritedFieldsNode,
+                                     _TableDependsOnValidationNodes):
+    def __init__(self):
+        _TableDependsOnValidationNodes.__init__(self)
+        CommonMergeInheritedFieldsNode.__init__(
+            self,
+            'table-merge-inherited-fields-node',
+            pg_table,
+            (pg_table_meta.check, ),
+            (pg_table_meta.default.value,
+             pg_table_meta.default.nextval))
+
+
+class _TableDependsOnValidationAndMergeNodes(_TableDependsOnValidationNodes):
+    def get_dependencies(self) -> tuple[str]:
+        return (*(super().get_dependencies()),
+                'table-merge-inherited-fields-node')
+
+
+class _TableExtractIndexDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
+                                                      ValidatesConflictingDefinitions,
+                                                      _TableDependsOnValidationAndMergeNodes):
     """
-    Pydantic overrides parent fields when redefined on child tables, losing
-    parent field metadata, and allowing child models that would be invalid
-    parent models.
-
-    'A serious limitation of the inheritance feature is that indexes (including unique constraints) 
-    and foreign key constraints only apply to single tables, not to their inheritance children. 
-    This is true on both the referencing and referenced sides of a foreign key constraint. '
-
-    Inherited fields must follow postgres rules when inheriting from table:
-    - Data type: field type defined in child table must match parent field type
-    - Default value: child table must inherit default value from parent, cant 
-    define a different one
-    - Foreign key: can be redefined, as they will be interpreted as a
-    child table primary key
-    - Primary key: can be redefined, as they will be interpreted as a
-    child table primary key
-    - Check constraints: will be merged by conjunction, as a child table 
-    instance must be a valid parent table instance. Programmer must avoid mutually 
-    exclusive constraints, as they wont be detected
-    - Unique index: can be redefined, as they will be interpreted as a
-    child table primary key
+    _Table index can be set via decorators or inferred from field metadata
     """
 
     def __init__(self):
-        super().__init__('merge-inherited-fields-component')
-
-    def _merge_from_parents(self, target: type, overwritten_fields: dict[str, list[Any]], meta_type: type) -> None:
-        # meta_type must be mergeable
-        for name in overwritten_fields:
-            # Extract mergeable from parent meta and merge with that defined in child
-            # There is at most one mergeable instance in field metadata, per previous 
-            # validations
-            mergeable_child_instance: Optional[Any] = extract_first_instance_from_field_metadata(target.model_fields[name], meta_type)
-            mergeable_inherited_instances: list[Any] = [c for c in extract_by_instance_type_from_list(overwritten_fields[name], meta_type)]
-            if len(mergeable_inherited_instances) <= 0:
-                return
-            if mergeable_child_instance is None:
-                # merges parent instances and then field in child inherits
-                # the merged instance
-                target.model_fields[name].metadata.append(mergeable_inherited_instances[0].merge(mergeable_inherited_instances[1:]))
-            else:
-                mergeable_child_instance.merge(mergeable_inherited_instances)
-
-    def _inherit_from_parents(self, target: type, overwritten_fields: dict[str, list[Any]], meta_type: type) -> None:
-        # the precondition is that inherited metadata instances are all consistent
-        # accross parent classes, otherwise postgres raises an error. this applies 
-        # both on default values and sequences
-        for name in overwritten_fields:
-            # validate default values or set if not defined in current model
-            child_defined: Optional[Any] = extract_first_instance_from_field_metadata(target.model_fields[name], meta_type)
-            parent_defined: Optional[Any] = extract_first_appearance_from_list(overwritten_fields[name], meta_type)
-            if child_defined is None and parent_defined is not None:
-                # inherit parent default value
-                target.model_fields[name].annotation.append(parent_defined)
-
-    def _validate_consistent_inherited_metadata(self, target: type, overwritten_fields: dict[str, list[Any]], meta_type: type) -> list[str]:
-        # Extract default values and validate all equal
-        errors: list[str] = []
-        for name in overwritten_fields:
-            initial: Optional[Any] = extract_first_instance_from_field_metadata(target.model_fields[name], meta_type)
-            inherited_meta: list[Any] = extract_by_instance_type_from_list(overwritten_fields[name], meta_type)
-            if not meta_type.consistent_list([initial] + inherited_meta if initial is not None else inherited_meta):
-                errors.append(f'Inconsistencies detected in inherited field {name} metadata {meta_type}')
-        return errors
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        errors: list[str] = []
-        overwritten_fields: dict[str, list[Any]] = dict()
-        # We are going to loop over base class fields and extract the instances
-        # that need to be merged, considering that at this point the target
-        # is well defined
-        for name, info in extract_definition_fields(target, pg_table):
-            for icls in extract_by_instance_type_from_inherited_classes(target, pg_table):
-                if name in icls.model_fields:
-                    # Validate fields share the same type
-                    if icls.model_fields[name].annotation != info.annotation:
-                        errors.append(f'Overwritten field {name} type in {target} must match with type defined in parent class {icls}')
-                    info: list[Any] = overwritten_fields.get(name, [])
-                    info += icls.model_fields[name].metadata
-        # At this point all metadata from inherited fields is in the overwritten_fields 
-        # dictionary, we must extract by instance and validate accordingly, or merge the
-        # fields there are two possible cases:
-        # 1. overridden field doesnt change default value/nextval, then the default 
-        # value must pass to child field
-        # 2. overridden field changes default value/nextval, this is illegal
-        errors += self._validate_consistent_inherited_metadata(target, overwritten_fields, pg_table_meta.default.value)
-        errors += self._validate_consistent_inherited_metadata(target, overwritten_fields, pg_table_meta.default.nextval)
-        if len(errors) > 0:
-            raise FlowComponentException(self.name, errors)
-        self._merge_from_parents(target, overwritten_fields, pg_table_meta.check)
-        self._inherit_from_parents(target, overwritten_fields, pg_table_meta.default.value)
-        self._inherit_from_parents(target, overwritten_fields, pg_table_meta.default.nextval)
-        target.model_rebuild(force=True)
-
-    def get_dependencies(self) -> tuple[str]:
-        return ('validate-consistent-base-classes-component',
-                'validate-restricted-metadata-types-component',
-                'validate-unique-metadata-types-component',
-                'validate-fields-base-type-component',
-                'validate-existing-columns-component')
-
-
-class TableDependsOnValidationComponents:
-    def get_dependencies(self) -> tuple[str]:
-        return ('validate-consistent-base-classes-component',
-                'validate-restricted-metadata-types-component',
-                'validate-unique-metadata-types-component',
-                'validate-fields-base-type-component',
-                'merge-inherited-fields-component',
-                'validate-existing-columns-component')
-
-
-class TableExtractIndexDefinitionFromDeclarationComponent(FlowComponent,
-                                                          ValidatesConflictingDefinitions,
-                                                          TableDependsOnValidationComponents):
-    """
-    Table index can be set via decorators or inferred from field metadata
-    """
-
-    def __init__(self):
-        super().__init__('extract-index-definition-from-declaration-component')
+        super().__init__('table-extract-index-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         indexes: list[dict[str, Any]] = [ix for ix in extract_by_instance_type_from_model_fields_info(
@@ -411,15 +335,15 @@ class TableExtractIndexDefinitionFromDeclarationComponent(FlowComponent,
             self.check_conflicting_definitions(target, 'indexes')
             accumulator.add_definition('indexes', definition)
         except Exception as e:
-            raise FlowComponentException(self.name, [str(e)])
+            raise FlowNodeException(self.name, [str(e)])
 
 
-class TableExtractPrimaryKeyDefinitionFromDeclarationComponent(FlowComponent,
-                                                               ValidatesConflictingDefinitions,
-                                                               TableDependsOnValidationComponents):
+class _TableExtractPrimaryKeyDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
+                                                           ValidatesConflictingDefinitions,
+                                                           _TableDependsOnValidationAndMergeNodes):
     # un campo solo puede tener una declaracion de builtin
     def __init__(self):
-        super().__init__('extract-primary-key-definition-from-declaration-component')
+        super().__init__('table-extract-primary-key-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         pks: list[dict[str, Any]] = [pk for pk in extract_by_instance_type_from_model_fields_info(
@@ -440,15 +364,15 @@ class TableExtractPrimaryKeyDefinitionFromDeclarationComponent(FlowComponent,
             self.check_conflicting_definitions(target, 'primary_key')
             accumulator.add_definition('primary_key', definition)
         except Exception as e:
-            raise FlowComponentException(self.name, [str(e)])
+            raise FlowNodeException(self.name, [str(e)])
 
 
-class TableExtractForeignKeyDefinitionFromDeclarationComponent(FlowComponent,
-                                                               ValidatesConflictingDefinitions,
-                                                               TableDependsOnValidationComponents):
+class _TableExtractForeignKeyDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
+                                                           ValidatesConflictingDefinitions,
+                                                           _TableDependsOnValidationAndMergeNodes):
     # un campo solo puede tener una declaracion de builtin
     def __init__(self):
-        super().__init__('extract-foreign-key-definition-from-declaration-component')
+        super().__init__('table-extract-foreign-keys-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         fks: list[dict[str, Any]] = [fk for fk in extract_by_instance_type_from_model_fields_info(
@@ -474,15 +398,15 @@ class TableExtractForeignKeyDefinitionFromDeclarationComponent(FlowComponent,
             self.check_conflicting_definitions(target, 'foreign_keys')
             accumulator.add_definition('foreign_keys', definition)
         except Exception as e:
-            raise FlowComponentException(self.name, [str(e)])
+            raise FlowNodeException(self.name, [str(e)])
 
 
-class TableExtractUniqueIndexDefinitionFromDeclarationComponent(FlowComponent,
-                                                                ValidatesConflictingDefinitions,
-                                                                TableDependsOnValidationComponents):
+class _TableExtractUniqueIndexDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
+                                                            ValidatesConflictingDefinitions,
+                                                            _TableDependsOnValidationAndMergeNodes):
     # un campo solo puede tener una declaracion de builtin
     def __init__(self):
-        super().__init__('extract-unique-index-definition-from-declaration-component')
+        super().__init__('table-extract-unique-indexes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         uixs: list[dict[str, Any]] = [uix for uix in extract_by_instance_type_from_model_fields_info(
@@ -505,14 +429,14 @@ class TableExtractUniqueIndexDefinitionFromDeclarationComponent(FlowComponent,
             self.check_conflicting_definitions(target, 'unique_indexes')
             accumulator.add_definition('unique_indexes', definition)
         except Exception as e:
-            raise FlowComponentException(self.name, [str(e)])
+            raise FlowNodeException(self.name, [str(e)])
 
 
-class TableExtractInheritanceDefinitionFromDeclarationComponent(FlowComponent,
-                                                                TableDependsOnValidationComponents):
+class _TableExtractInheritanceDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
+                                                            _TableDependsOnValidationAndMergeNodes):
     # un campo solo puede tener una declaracion de builtin
     def __init__(self):
-        super().__init__('extract-inheritance-definition-from-declaration-component')
+        super().__init__('table-extract-base-classes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         try:
@@ -522,13 +446,13 @@ class TableExtractInheritanceDefinitionFromDeclarationComponent(FlowComponent,
             if len(inherited) > 0:
                 accumulator.add_definition('inherited', inherited)
         except Exception as e:
-            raise FlowComponentException(self.name, [str(e)])
+            raise FlowNodeException(self.name, [str(e)])
 
 
-class TableExtractColumnDefinitionFromDeclarationComponent(FlowComponent,
-                                                           TableDependsOnValidationComponents):
+class _TableExtractColumnDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
+                                                       _TableDependsOnValidationAndMergeNodes):
     def __init__(self):
-        super().__init__('extract-column-definition-from-declaration-component')
+        super().__init__('table-extract-columns-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         # extraer las definiciones de columna
@@ -547,22 +471,23 @@ class TableExtractColumnDefinitionFromDeclarationComponent(FlowComponent,
             col_data['comment'] = comment
             columns.append(col_data)
         if len(columns) <= 0:
-            raise FlowComponentException(self.name, [f'Class {target} must declare columns.'])
+            raise FlowNodeException(self.name, [f'Class {target} must declare columns.'])
         accumulator.add_definition('columns', columns)
 
 
-class TableExtractCheckConstraintsComponent(CommonExtractCheckConstraintsComponent,
-                                            TableDependsOnValidationComponents):
-    pass
+class _TableExtractCheckConstraintsNode(CommonExtractCheckConstraintsNode,
+                                        _TableDependsOnValidationAndMergeNodes):
+    def __init__(self):
+        super().__init__('table-extract-check-constraints-node')
 
 
-class TableStoreExtractedPrimaryKeyComponent(FlowComponent):
+class _TableStoreExtractedPrimaryKeyNode(SingleChoiceDefinitionFlowNode):
     """
     Validates that a column doesnt appear in more than one primary key definition
     """
 
     def __init__(self):
-        super().__init__('store-extracted-primary-key-component')
+        super().__init__('table-store-primary-key-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('primary_key', 'extraction')
@@ -577,16 +502,16 @@ class TableStoreExtractedPrimaryKeyComponent(FlowComponent):
         accumulator.add_definition('__pg_primary_key', __pg_primary_key)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-primary-key-definition-from-declaration-component', )
+        return ('table-extract-primary-key-node', )
 
 
-class TableStoreExtractedIndexComponent(FlowComponent):
+class _TableStoreExtractedIndexNode(SingleChoiceDefinitionFlowNode):
     """
     Validates that a column doesnt appear in more than one primary key definition
     """
 
     def __init__(self):
-        super().__init__('store-extracted-index-component')
+        super().__init__('table-store-extracted-index-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         ix_definition: list[dict[str, Any]] = accumulator.get_definition('indexes', 'extraction')
@@ -610,22 +535,25 @@ class TableStoreExtractedIndexComponent(FlowComponent):
         accumulator.add_definition('__pg_indexes', __pg_indexes)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-unique-index-definition-from-declaration-component',
-                'extract-index-definition-from-declaration-component')
+        return ('table-extract-unique-indexes-node',
+                'table-extract-index-node')
 
 
-class TableStoreCheckConstraintsComponent(CommonStoreCheckConstraintsComponent):
+class _TableStoreCheckConstraintsNode(CommonStoreCheckConstraintsNode):
+    def __init__(self):
+        super().__init__('table-store-check-constraints-node')
+
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-check-constraints-component', )
+        return ('table-extract-check-constraints-node', )
 
 
-class TableStoreExtractedForeignKeyComponent(FlowComponent):
+class _TableStoreExtractedForeignKeyNode(SingleChoiceDefinitionFlowNode):
     """
     Validates that a column doesnt appear in more than one primary key definition
     """
 
     def __init__(self):
-        super().__init__('store-extracted-foreign-key-component')
+        super().__init__('store-extracted-foreign-keys-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('foreign_keys', 'extraction')
@@ -641,16 +569,16 @@ class TableStoreExtractedForeignKeyComponent(FlowComponent):
         accumulator.add_definition('__pg_foreign_keys', __pg_foreign_keys)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-foreign-key-definition-from-declaration-component', )
+        return ('table-extract-foreign-keys-node', )
 
 
-class TableStoreExtractedInheritedClassesComponent(FlowComponent):
+class _TableStoreExtractedInheritedClassesNode(SingleChoiceDefinitionFlowNode):
     """
     Validates that a column doesnt appear in more than one primary key definition
     """
 
     def __init__(self):
-        super().__init__('store-extracted-inherited-classes-component')
+        super().__init__('table-store-base-classes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         base_classes: tuple[type[Any]] = accumulator.get_definition('inherited', 'extraction')
@@ -662,16 +590,16 @@ class TableStoreExtractedInheritedClassesComponent(FlowComponent):
         accumulator.add_definition('__pg_base_classes', __pg_base_classes)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-inheritance-definition-from-declaration-component', )
+        return ('table-extract-base-classes-node', )
 
 
-class TableStoreExtractedColumnsComponent(FlowComponent):
+class _TableStoreExtractedColumnsNode(SingleChoiceDefinitionFlowNode):
     """
     Validates that a column doesnt appear in more than one primary key definition
     """
 
     def __init__(self):
-        super().__init__('store-columns-component')
+        super().__init__('table-store-extracted-columns-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: list[dict[str, Any]] = accumulator.get_definition('columns', 'extraction')
@@ -684,75 +612,84 @@ class TableStoreExtractedColumnsComponent(FlowComponent):
         accumulator.add_definition('__pg_columns', __pg_columns)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('extract-column-definition-from-declaration-component', )
+        return ('table-extract-column-definition-node', )
 
 
-class TableStoreFinalDefinitionComponent(FlowComponent):
+class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     """
     Stores final definition
     """
 
     def __init__(self):
-        super().__init__('store-final-definition-component')
+        super().__init__('table-store-final-definition-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = accumulator.get_definition('built')
         accumulator.add_definition('final', {} if definition is None else definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('store-columns-component', )
+        return ('table-store-columns-node', )
 
 
-with pg_table_definition_flow.at_work_path('validation') as flow:
-    flow.register(TableValidateExistingColumnsComponent())
-    flow.register(TableValidateConsistentBaseClassesComponent())
-    flow.register(TableValidateRestrictedMetadataTypesComponent([
-        pg_table_meta.foreign_key,
-        pg_table_meta.primary_key,
-        pg_table_meta.index,
-        pg_table_meta.unique_index,
-        pg_table_meta.check,
-        pg_table_meta.default.value,
-        pg_table_meta.default.nextval,
-        pg_table_meta.comment]))
-    flow.register(TableValidateUniqueMetadataTypesComponent([
-        pg_table_meta.foreign_key,
-        pg_table_meta.primary_key,
-        pg_table_meta.default.value,
-        pg_table_meta.default.nextval,
-        pg_table_meta.comment,
-        pg_table_meta.check]))
-    flow.register(TableValidateFieldsBaseTypeComponent(
-        type_subclass=[
-            pg_enum,
-            pg_composite],
-        type_instance=[
-            pg_builtin,
-            pg_domain]))
+_table_node_factory: DefinitionFlowNodeFactory = DefinitionFlowNodeFactory()
+_last_node: Optional[DefinitionFlowNode] = None
 
-with pg_table_definition_flow.at_work_path('merge') as flow:
-    flow.register(TableMergeInheritedFieldsComponent().critical())
 
-with pg_table_definition_flow.at_work_path('extraction') as flow:
-    flow.register(TableExtractIndexDefinitionFromDeclarationComponent().critical())
-    flow.register(TableExtractCheckConstraintsComponent())
-    flow.register(TableExtractPrimaryKeyDefinitionFromDeclarationComponent())
-    flow.register(TableExtractForeignKeyDefinitionFromDeclarationComponent())
-    flow.register(TableExtractUniqueIndexDefinitionFromDeclarationComponent())
-    flow.register(TableExtractInheritanceDefinitionFromDeclarationComponent())
-    flow.register(TableExtractColumnDefinitionFromDeclarationComponent())
+with _table_node_factory.at_work_path('validation') as fact:
+    _last_node = _pg_table_definition_flow_root\
+        .set_next(fact.get_definition_node(_TableValidateExistingColumnsNode))
+    _last_node = _last_node\
+        .set_next(fact.get_definition_node(_TableValidateExistingColumnsNode))\
+        .set_next(fact.get_definition_node(_TableValidateExistingColumnsNode))\
+        .set_next(fact.get_definition_node(_TableValidateConsistentBaseClassesNode))\
+        .set_next(fact.get_definition_node(_TableValidateRestrictedMetadataTypesNode,
+                                           [pg_table_meta.foreign_key,
+                                            pg_table_meta.primary_key,
+                                            pg_table_meta.index,
+                                            pg_table_meta.unique_index,
+                                            pg_table_meta.check,
+                                            pg_table_meta.default.value,
+                                            pg_table_meta.default.nextval,
+                                            pg_table_meta.comment]))\
+        .set_next(fact.get_definition_node(_TableValidateUniqueMetadataTypesNode,
+                                           [pg_table_meta.foreign_key,
+                                            pg_table_meta.primary_key,
+                                            pg_table_meta.default.value,
+                                            pg_table_meta.default.nextval,
+                                            pg_table_meta.comment,
+                                            pg_table_meta.check]))\
+        .set_next(fact.get_definition_node(_TableValidateFieldsBaseTypeNode,
+                                           type_subclass=[pg_enum,
+                                                          pg_builtin,
+                                                          pg_composite],
+                                           type_instance=[pg_builtin]))
 
-with pg_table_definition_flow.at_work_path('built') as flow:
-    flow.register(TableStoreExtractedPrimaryKeyComponent().critical())
-    flow.register(TableStoreExtractedIndexComponent())
-    flow.register(TableStoreExtractedForeignKeyComponent())
-    flow.register(TableStoreExtractedInheritedClassesComponent())
-    flow.register(TableStoreExtractedColumnsComponent())
-    flow.register(TableStoreCheckConstraintsComponent())
+with _table_node_factory.at_work_path('merge') as fact:
+    _last_node = _last_node\
+        .set_next(fact.get_definition_node(_TableMergeInheritedFieldsNode).critical())
 
-with pg_table_definition_flow.at_work_path('') as flow:
-    flow.register(TableStoreFinalDefinitionComponent())
+with _table_node_factory.at_work_path('extraction') as fact:
+    _last_node = _last_node\
+        .set_next(fact.get_definition_node(_TableExtractIndexDefinitionFromDeclarationNode).critical())\
+        .set_next(fact.get_definition_node(_TableExtractCheckConstraintsNode))\
+        .set_next(fact.get_definition_node(_TableExtractPrimaryKeyDefinitionFromDeclarationNode))\
+        .set_next(fact.get_definition_node(_TableExtractForeignKeyDefinitionFromDeclarationNode))\
+        .set_next(fact.get_definition_node(_TableExtractUniqueIndexDefinitionFromDeclarationNode))\
+        .set_next(fact.get_definition_node(_TableExtractInheritanceDefinitionFromDeclarationNode))\
+        .set_next(fact.get_definition_node(_TableExtractColumnDefinitionFromDeclarationNode))
 
+with _table_node_factory.at_work_path('built') as fact:
+    _last_node = _last_node\
+        .set_next(fact.get_definition_node(_TableStoreExtractedPrimaryKeyNode).critical())\
+        .set_next(fact.get_definition_node(_TableStoreExtractedIndexNode))\
+        .set_next(fact.get_definition_node(_TableStoreExtractedForeignKeyNode))\
+        .set_next(fact.get_definition_node(_TableStoreExtractedInheritedClassesNode))\
+        .set_next(fact.get_definition_node(_TableStoreExtractedColumnsNode))\
+        .set_next(fact.get_definition_node(_TableStoreCheckConstraintsNode))
+
+with _table_node_factory.at_work_path('') as fact:
+    _last_node = _last_node\
+        .set_next(fact.get_definition_node(_TableStoreFinalDefinitionNode))
 
 __all__ = {
     'pg_table': pg_table,

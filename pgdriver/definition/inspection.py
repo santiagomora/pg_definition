@@ -281,21 +281,25 @@ def ordered_dict_accumulator(
     return accumulator
 
 
-def has_classmethod(cls: type, methodname: str) -> bool:
+def has_classattr(cls: type, methodname: str) -> bool:
     attr_name = methodname
     if methodname.startswith('__'):
         attr_name = f'_{cls.__name__}__{methodname}'
-    if not hasattr(cls, attr_name):
-        return False
-    attr = getattr(cls, attr_name)
-    return callable(attr)
+    return hasattr(cls, attr_name)
 
 
 def execute_classmethod(cls: type, methodname: str, default_value: Any = None, *args, **kwargs) -> Any:
-    if not has_classmethod(cls, methodname):
+    if not has_classattr(cls, methodname):
         return default_value
     method = getattr(cls, f'_{cls.__name__}__{methodname}')
     return method(*args, **kwargs)
+
+
+def delete_classattr(cls: type, methodname: str, *args, **kwargs) -> None:
+    attr_name = methodname
+    if methodname.startswith('__'):
+        attr_name = f'_{cls.__name__}__{methodname}'
+    delattr(cls, attr_name)
 
 
 def get_type_arguments(cls: type) -> tuple[type]:
@@ -313,6 +317,13 @@ def extract_type(tp: type) -> type:
     if is_optional(tp):
         return get_args(tp)[0]
     return tp
+
+
+def is_field_inherited(name: str, cls: type, base_class_type: type[BaseModel]) -> bool:
+    for icls in extract_by_instance_type_from_inherited_classes(cls, base_class_type):
+        if name in icls.model_fields:
+            return True
+    return False
 
 # # * los atributos de las clases base no pueden compartirse y si
 # # se comparten deben tener la misma definicion

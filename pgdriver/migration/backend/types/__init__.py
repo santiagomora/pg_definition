@@ -29,7 +29,7 @@ from pgdriver.migration.backend.types.table import\
     mgr_table_index_type,\
     mgr_table_index,\
     mgr_table_primary_key
-from pgdriver.definition.build import\
+from pgdriver.definition.base import\
     pg_composite
 
 

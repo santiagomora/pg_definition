@@ -7,11 +7,8 @@ from pgdriver.definition.build import\
     pg_enum
 from typing import\
     Optional
-from pgdriver.definition.registry import\
-    valid_pg_definition
 
 
-@valid_pg_definition
 class def_table_index_type(pg_enum):
     BTREE = 'btree'
     HASH = 'hash'
@@ -21,7 +18,6 @@ class def_table_index_type(pg_enum):
     SPGIST = 'spgist'
 
 
-@valid_pg_definition
 class def_table_foreign_key_action(pg_enum):
     SET_NULL = 'SET NULL'
     SET_DEFAULT = 'SET DEFAULT'
@@ -30,7 +26,6 @@ class def_table_foreign_key_action(pg_enum):
     CASCADE = 'CASCADE'
 
 
-@valid_pg_definition
 class def_attribute_definition(pg_composite):
     name: pg_text
     order: pg_int
@@ -39,7 +34,6 @@ class def_attribute_definition(pg_composite):
     type_name: pg_text
 
 
-@valid_pg_definition
 class def_composite_definition(pg_composite):
     name: pg_text
     schema_name: pg_text
@@ -47,7 +41,6 @@ class def_composite_definition(pg_composite):
     comment: Optional[pg_text]
 
 
-@valid_pg_definition
 class def_column_definition(pg_composite):
     name: pg_text
     order: pg_int
@@ -56,7 +49,6 @@ class def_column_definition(pg_composite):
     type_name: pg_text
 
 
-@valid_pg_definition
 class def_foreign_key_definition(pg_composite):
     name: pg_text
     class_column_name: tuple[pg_text]
@@ -66,13 +58,11 @@ class def_foreign_key_definition(pg_composite):
     on_update: def_table_foreign_key_action
 
 
-@valid_pg_definition
 class def_primary_key_definition(pg_composite):
     name: pg_text
     column_name: tuple[pg_text]
 
 
-@valid_pg_definition
 class def_index_definition(pg_composite):
     name: pg_text
     column_name: tuple[pg_text]
@@ -80,7 +70,6 @@ class def_index_definition(pg_composite):
     is_unique: pg_bool
 
 
-@valid_pg_definition
 class def_table_definition(pg_composite):
     name: pg_text
     schema_name: pg_text
@@ -92,13 +81,11 @@ class def_table_definition(pg_composite):
     primary_key: Optional[def_primary_key_definition]
 
 
-@valid_pg_definition
 class def_enum_value_definition(pg_composite):
     value: pg_text
     order: pg_int
 
 
-@valid_pg_definition
 class def_enum_definition(pg_composite):
     name: pg_text
     schema_name: pg_text
@@ -106,15 +93,20 @@ class def_enum_definition(pg_composite):
     values: list[def_enum_value_definition]
 
 
-@valid_pg_definition
 class def_domain_definition(pg_composite):
     name: pg_text
     schema_name: pg_text
     comment: Optional[pg_text]
+    base_type_name: pg_text
+    check_constraint: pg_text
+
+
+class def_builtin_definition(pg_composite):
+    name: pg_text
+    schema_name: pg_text
     type_name: pg_text
 
 
-@valid_pg_definition
 class def_sequence_definition(pg_composite):
     name: pg_text
     schema_name: pg_text

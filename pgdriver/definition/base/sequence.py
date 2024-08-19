@@ -1,43 +1,37 @@
-from pgdriver.definition.flows import\
-    DefinitionFlow,\
-    FlowComponent,\
-    FlowAccumulator,\
-    FlowComponentException
-from pgdriver.definition.build import\
-    pg_bigint,\
-    pg_smallint,\
-    pg_int
 from typing import\
     Generic,\
     get_args,\
-    TypeVar
-from pgdriver.definition.inspection import\
+    TypeVar,\
+    Optional
+from .common.flow import\
+    SingleChoiceDefinitionFlowNode,\
+    FlowAccumulator,\
+    RootDefinitionFlowNode,\
+    DefinitionFlowNodeFactory,\
+    DefinitionFlowNode,\
+    FlowNodeException
+from .builtin import\
+    pg_bigint,\
+    pg_smallint,\
+    pg_int
+from ..inspection import\
     extract_by_instance_type_from_inherited_classes
 
 
-pg_sequence_definition_flow: DefinitionFlow = DefinitionFlow('pgdriver-sequence-definition-flow')
+_pg_sequence_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('sequence-definition-flow')
 
 
-class pg_sequence(type):
+T = TypeVar('T', bound=int)
+
+
+class pg_sequence(type, Generic[T]):
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
-        accumulator: FlowAccumulator = FlowAccumulator()
-        pg_sequence_definition_flow.execute(cls, accumulator)
+        accumulator: FlowAccumulator = FlowAccumulator(cls)
+        _pg_sequence_definition_flow_root.execute(cls, accumulator)
 
 
-class pg_bigint_sequence(metaclass=pg_sequence):
-    pass
-
-
-class pg_int_sequence(metaclass=pg_sequence):
-    pass
-
-
-class pg_smallint_sequence(metaclass=pg_sequence):
-    pass
-
-
-class SequenceValidateTargetTypeComponent(FlowComponent):
+class _SequenceValidateTargetTypeNode(SingleChoiceDefinitionFlowNode):
     """
     target type must be an instance of pg_int, pg_bigint or pg_smallint
     """
@@ -46,12 +40,13 @@ class SequenceValidateTargetTypeComponent(FlowComponent):
         super().__init__('validate-target-type-component')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        if target is pg_bigint or target is pg_int or target is pg_smallint:
-            return
-        raise FlowComponentException(self.name, [f'Target type {type} must be a pg_bigint, pg_int or a pg_smallint instance'])
+        pass
+        # if target is pg_bigint or target is pg_int or target is pg_smallint:
+        #     return
+        # raise FlowNodeException(self.name, [f'Target type {type} must be a pg_bigint, pg_int or a pg_smallint instance'])
 
 
-class SequenceStoreFinalDefinitionComponent(FlowComponent):
+class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     """
     Stores final definition
     """
@@ -111,16 +106,28 @@ class with_pg_min_value(Generic[T]):
             '__pg_min_value': __pg_min_value})
 
 
-with pg_sequence_definition_flow.at_work_path('validation') as flow:
-    flow.register(SequenceValidateTargetTypeComponent())
+_sequence_node_factory: DefinitionFlowNodeFactory = DefinitionFlowNodeFactory()
+_last_node: Optional[DefinitionFlowNode] = None
 
-with pg_sequence_definition_flow.at_work_path('') as flow:
-    flow.register(SequenceStoreFinalDefinitionComponent())
+with _sequence_node_factory.at_work_path('validation') as fact:
+    _last_node = _pg_sequence_definition_flow_root.set_next(fact.get_definition_node(_SequenceValidateTargetTypeNode))
+
+with _sequence_node_factory.at_work_path('') as fact:
+    _last_node = _last_node.set_next(fact.get_definition_node(_SequenceStoreFinalDefinitionNode))
+
+
+class pg_bigint_sequence(pg_sequence[pg_bigint]):
+    pass
+
+
+class pg_int_sequence(pg_sequence[pg_int]):
+    pass
+
+
+class pg_smallint_sequence(pg_sequence[pg_smallint]):
+    pass
 
 
 __all__ = {
-    'pg_bigint_sequence': pg_bigint_sequence,
-    'pg_int_sequence': pg_int_sequence,
-    'pg_smallint_sequence': pg_smallint_sequence,
     'with_pg_max_value': with_pg_max_value,
     'with_pg_min_value': with_pg_min_value}
