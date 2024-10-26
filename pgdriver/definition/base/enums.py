@@ -1,27 +1,21 @@
 from typing import\
-    Any,\
-    Optional
+    Any
 from enum import\
     Enum
 from .common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     SingleChoiceDefinitionFlowNode,\
-    DefinitionFlowNodeFactory,\
     DefinitionFlowNode,\
+    DefinitionFlowBuilder,\
     FlowEndException
-from ..extraction.base import\
-    pg_enum_definition,\
-    pg_enum_value_definition
-from .domain import\
-    DomainExtractCommentNode,\
-    DomainStoreFinalDefinitionNode
 from .common.node import\
     CommonValidateSingleInheritedClassNode,\
     CommonDetermineIfTargetIsDomainNode
 
 
 _pg_enum_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('enum-definition-flow')
+enum_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_pg_enum_definition_flow_root)
 
 
 class pg_enum(metaclass=Enum):
@@ -122,56 +116,29 @@ class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         return ('enum-store-values-node', )
 
 
-class _EnumDomainExtractCommentNode(DomainExtractCommentNode):
+class _EnumDomainExtractCommentNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
         super().__init__('enum-domain-extract-comment-node')
 
 
-class _EnumDomainStoreFinalDefinitionNode(DomainStoreFinalDefinitionNode):
+class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
         super().__init__('enum-domain-store-final-definition-node')
 
 
-_enum_node_factory: DefinitionFlowNodeFactory = DefinitionFlowNodeFactory()
-
-# we build domain definition flow
-_domain_flow_first_node: Optional[DefinitionFlowNode] = None
-_domain_flow_last_node: Optional[DefinitionFlowNode] = None
-
-with _enum_node_factory.at_work_path('store') as fact:
-    _domain_flow_first_node = _domain_flow_last_node\
-        = fact.get_definition_node(_EnumDomainExtractCommentNode)
-    _domain_flow_last_node = _domain_flow_last_node\
-        .set_next(fact.get_definition_node(_EnumDomainStoreFinalDefinitionNode))
-
-
-# we build enum the store definition flow
-_enum_store_flow_first_node: Optional[DefinitionFlowNode] = None
-_enum_store_flow_last_node: Optional[DefinitionFlowNode] = None
-
-with _enum_node_factory.at_work_path('store') as fact:
-    _enum_store_flow_first_node = _enum_store_flow_last_node \
-        = fact.get_definition_node(_EnumStoreValuesNode)
-    _enum_store_flow_last_node = _enum_store_flow_last_node\
-        .set_next(fact.get_definition_node(_EnumStoreFinalDefinitionNode))
-
-
-# we build the final enum definition flow
-_enum_flow_last_node: Optional[DefinitionFlowNode] = None
-
-with _enum_node_factory.at_work_path('validation') as fact:
-    _enum_flow_last_node = _pg_enum_definition_flow_root\
-        .set_next(fact.get_definition_node(_EnumValidateSingleInheritedClassNode))
-
-with _enum_node_factory.at_work_path('extraction') as fact:
-    _enum_flow_last_node = _enum_flow_last_node\
-        .set_next(fact.get_definition_node(_EnumExtractValuesNode).critical())
-
-with _enum_node_factory.at_work_path('store') as fact:
-    _enum_flow_last_node = _enum_flow_last_node\
-        .set_next(fact.get_definition_node(_EnumDetermineIfTargetIsDomainNode).critical())\
-        .set_next(_domain_flow_first_node)\
-        .set_next(_enum_store_flow_first_node)
+enum_flow_builder\
+    .at_work_path('validation')\
+    .add_node(_EnumValidateSingleInheritedClassNode)\
+    .at_work_path('extraction')\
+    .add_node(_EnumExtractValuesNode).critical()\
+    .at_work_path('store')\
+        .add_node(_EnumDetermineIfTargetIsDomainNode).critical()\
+        .build_choice(_EnumDomainExtractCommentNode)\
+            .add_node(_EnumDomainStoreFinalDefinitionNode)\
+            .end_choice()\
+        .build_choice(_EnumStoreValuesNode)\
+            .add_node(_EnumStoreFinalDefinitionNode)\
+            .end_choice()
 
 __all__ = {
     'pg_enum': pg_enum}

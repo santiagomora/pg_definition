@@ -1,24 +1,20 @@
 from typing import\
     Generic,\
     get_args,\
-    TypeVar,\
-    Optional
+    TypeVar
 from .common.flow import\
     SingleChoiceDefinitionFlowNode,\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
-    DefinitionFlowNodeFactory,\
-    DefinitionFlowNode,\
-    FlowNodeException
+    DefinitionFlowBuilder
 from .builtin import\
     pg_bigint,\
     pg_smallint,\
     pg_int
-from ..inspection import\
-    extract_by_instance_type_from_inherited_classes
 
 
 _pg_sequence_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('sequence-definition-flow')
+sequence_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_pg_sequence_definition_flow_root)
 
 
 T = TypeVar('T', bound=int)
@@ -79,7 +75,7 @@ class with_pg_max_value(Generic[T]):
         @classmethod
         def __pg_max_value(cls) -> T:
             return self._max_value
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls)
+        bases: tuple[type] = wrapped_cls.__bases__
 
         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
             '__pg_max_value': __pg_max_value})
@@ -100,20 +96,17 @@ class with_pg_min_value(Generic[T]):
         @classmethod
         def __pg_min_value(cls) -> T:
             return self._max_value
-        bases: tuple[type] = extract_by_instance_type_from_inherited_classes(wrapped_cls) # should use mro instead
+        bases: tuple[type] = wrapped_cls.__bases__
 
         return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
             '__pg_min_value': __pg_min_value})
 
 
-_sequence_node_factory: DefinitionFlowNodeFactory = DefinitionFlowNodeFactory()
-_last_node: Optional[DefinitionFlowNode] = None
-
-with _sequence_node_factory.at_work_path('validation') as fact:
-    _last_node = _pg_sequence_definition_flow_root.set_next(fact.get_definition_node(_SequenceValidateTargetTypeNode))
-
-with _sequence_node_factory.at_work_path('') as fact:
-    _last_node = _last_node.set_next(fact.get_definition_node(_SequenceStoreFinalDefinitionNode))
+sequence_flow_builder\
+    .at_work_path('validation')\
+        .add_node(_SequenceValidateTargetTypeNode)\
+    .at_work_path('')\
+        .add_node(_SequenceStoreFinalDefinitionNode)
 
 
 class pg_bigint_sequence(pg_sequence[pg_bigint]):

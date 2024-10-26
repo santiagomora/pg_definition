@@ -10,25 +10,8 @@ from enum import\
     Enum,\
     auto
 import pprint
-# from heapq import\
-#     heappush,\
-#     heappop
 from contextlib import\
     contextmanager
-# from pgdriver.definition.flows import\
-#     DefinitionFlowRegistry
-# from pgdriver.definition.flows.table import\
-#     pg_table_definition_flow
-# from pgdriver.definition.flows.composite import\
-#     pg_composite_definition_flow
-# from pgdriver.definition.flows.domain import\
-#     pg_domain_definition_flow
-# from pgdriver.definition.flows.enum import\
-#     pg_enum_definition_flow
-# from pgdriver.definition.flows.sequence import\
-#     pg_sequence_definition_flow
-# from pgdriver.definition.flows import\
-#     FlowAccumulator
 
 
 class FlowNodeException(Exception):
@@ -81,6 +64,9 @@ class FlowAccumulator(HandlesWorkPath):
     def clear(self) -> None:
         self._definition.clear()
         self._errors.clear()
+
+    def __str__(self) -> str:
+        return f'Definition:\n{self._definition}\n\nErrors:\n{self._errors}\n'
 
     def has_errors(self):
         return len(self._errors.keys()) != 0
@@ -219,7 +205,7 @@ class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
                         node.initialize(acc)
                         dependencies: set[str] = set(node.get_dependencies())
                         if not dependencies.issubset(executed):
-                            raise RuntimeError(f'Dependencies not met for node {node.name}')
+                            raise RuntimeError(f'Dependencies not met for node {node.name}.\nMissing: {dependencies - executed}')
                         executed.add(node.name)
                         node.execute(on_type, acc)
                     except FlowNodeException as e:
@@ -248,3 +234,39 @@ def execute_definition_flow(on_type: type, root: RootDefinitionFlowNode) -> dict
     def __pg_definition(cls) -> dict[str, Any]:
         return final
     setattr(on_type, '__pg_definition', __pg_definition)
+
+
+class DefinitionFlowBuilder:
+    def __init__(self, root_node: RootDefinitionFlowNode,
+                 parent: Optional['DefinitionFlowBuilder'] = None):
+        self.last_node = root_node
+        self.root_node = root_node
+        self.work_path = ''
+        self.parent = parent
+
+    def at_work_path(self, work_path: str) -> Self:
+        self.work_path = work_path
+        return self
+
+    def add_node(self, nodecls: type[DefinitionFlowNode], *args, **kwargs) -> Self:
+        instance: DefinitionFlowNode = nodecls(*args, **kwargs)
+        instance.accumulator_path = self.work_path
+        self.last_node = self.last_node.set_next(instance)
+        return self
+
+    def critical(self) -> Self:
+        self.last_node.critical()
+        return self
+
+    def build_choice(self, nodecls: type[DefinitionFlowNode], *args, **kwargs) -> 'DefinitionFlowBuilder':
+        if not isinstance(self.last_node, MultipleChoiceDefinitionFlowNode):
+            raise Exception('last added node must be an multiple choice node in order to add choices')
+        instance: DefinitionFlowNode = nodecls(*args, **kwargs)
+        instance.accumulator_path = self.work_path
+        return DefinitionFlowBuilder(instance, self)
+
+    def end_choice(self) -> 'DefinitionFlowBuilder':
+        if self.parent is None:
+            raise Exception('choice not started')
+        self.parent.last_node.set_next(self.root_node)
+        return self.parent

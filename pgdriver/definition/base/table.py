@@ -1,12 +1,9 @@
 from typing import\
     Type,\
     Generic,\
-    get_args,\
     Optional,\
     TypeVar,\
     Any
-from pydantic import\
-    BaseModel
 from dataclasses import\
     dataclass
 from pydantic_core import\
@@ -19,18 +16,14 @@ from pydantic.fields import\
 from .common.flow import\
     SingleChoiceDefinitionFlowNode,\
     FlowAccumulator,\
-    DefinitionFlowNodeFactory,\
     FlowNodeException,\
-    DefinitionFlowNode,\
-    RootDefinitionFlowNode
-from .common.node import\
-    CommonValidateRestrictedMetadataTypesNode,\
-    CommonValidateUniqueMetadataTypesNode,\
-    CommonValidateFieldsBaseTypeNode,\
-    CommonExtractCheckConstraintsNode,\
-    CommonStoreCheckConstraintsNode,\
-    ValidatesConflictingDefinitions,\
-    CommonMergeInheritedFieldsNode
+    DefinitionFlowBuilder
+from .common.model import\
+    pg_table,\
+    pg_table_definition_flow_root,\
+    ModelValidateRestrictedMetadataTypesNode,\
+    ModelValidateUniqueMetadataTypesNode,\
+    ModelValidateFieldsBaseTypeNode
 from .composite import\
     pg_composite
 from .enums import\
@@ -47,12 +40,12 @@ from ..inspection import\
     aggregate,\
     ordered_set_accumulator,\
     key_by,\
-    extract_by_instance_type_from_inherited_classes,\
     extract_first_instance_from_field_metadata,\
     is_optional,\
     extract_type
 from .common.meta import\
-    pg_model_field_check,\
+    pg_check,\
+    pg_default_value,\
     pg_comment
 from .sequence import\
     pg_sequence
@@ -61,134 +54,77 @@ from ..extraction.base import\
     pg_table_foreign_key_action
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
-_pg_table_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('table-definition-flow')
+@dataclass
+class pg_table_index:
+    name: str
+    type: pg_table_index_type = pg_table_index_type.BTREE
 
 
-class pg_table(BaseModel, frozen=True):
-    def __init_subclass__(cls, *args, **kwargs):
-        super().__init_subclass__(*args, **kwargs)
-        accumulator: FlowAccumulator = FlowAccumulator(cls)
-        _pg_table_definition_flow_root.execute(cls, accumulator)
+@dataclass
+class pg_table_unique_index:
+    name: str
+    type: pg_table_index_type = pg_table_index_type.BTREE
 
 
-class pg_table_meta:
-    @dataclass
-    class index:
-        name: str
-        type: pg_table_index_type = pg_table_index_type.BTREE
+@dataclass
+class pg_table_primary_key:
+    name: str
 
-    @dataclass
-    class unique_index:
-        name: str
-        type: pg_table_index_type = pg_table_index_type.BTREE
 
-    @dataclass
-    class primary_key:
-        name: str
+@dataclass(kw_only=True)
+class pg_table_foreign_key:
+    name: str
+    other_class: type[pg_table]
+    other_class_column_name: str
+    on_update: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
+    on_delete: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
 
-    @dataclass(kw_only=True)
-    class foreign_key:
-        name: str
-        other_class: type[pg_table]
-        other_class_column_name: str
-        on_update: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
-        on_delete: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
+    def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        errors: list[str] = []
+        if not issubclass(self.other_class, pg_table):
+            errors.append(f'Other class {self.other_class} must be a {pg_table} instance')
+        if self.other_class_column_name not in self.other_class.model_fields:
+            errors.append(f'Foreign key column {self.other_class_column_name} must exist in {self.other_class} definition')
+        other_class_column: FieldInfo = self.other_class.model_fields[self.other_class_column_name]
+        schema: core_schema.CoreSchema = handler(source)
+        if extract_type(other_class_column.annotation) != extract_type(source):
+            errors.append(f'Foreign key column {handler.field_name} type must match with {self.other_class_column_name} in {self.other_class} definition')
+        if len(errors) > 0:
+            raise TypeError(', '.join(errors))
+        # ignore class pg_check[T] has no attribute __orig_class__ error
+        # raised by mypy
+        return schema
 
-        def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-            errors: list[str] = []
-            if not issubclass(self.other_class, pg_table):
-                errors.append(f'Other class {self.other_class} must be a {pg_table} instance')
-            if self.other_class_column_name not in self.other_class.model_fields:
-                errors.append(f'Foreign key column {self.other_class_column_name} must exist in {self.other_class} definition')
-            other_class_column: FieldInfo = self.other_class.model_fields[self.other_class_column_name]
-            schema: core_schema.CoreSchema = handler(source)
-            if extract_type(other_class_column.annotation) != extract_type(source):
-                errors.append(f'Foreign key column {handler.field_name} type must match with {self.other_class_column_name} in {self.other_class} definition')
-            if len(errors) > 0:
-                raise TypeError(', '.join(errors))
-            # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
-            # raised by mypy
-            return schema
 
-    class check(pg_model_field_check):
-        pass
+class pg_default_sequence_nextval(Generic[T]):
+    seq: pg_sequence
 
-    class comment(pg_comment):
-        pass
+    def __get_pydantic_core_schema__(self, source: type, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        base_seq: type = self.seq.__bases__[0]
+        errors: list[str] = []
+        if is_optional(source):
+            errors.append('Annotated type must not be optional')
+        if base_seq is not source:
+            errors.append('Sequence type must match annotated type')
+        if len(errors) > 0:
+            raise TypeError(', '.join(errors))
+        # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
+        # raised by mypy
+        return core_schema.with_info_after_validator_function(
+            function=self.validate,
+            schema=handler(source),
+            field_name=handler.field_name)
 
-    class default:
-        @dataclass
-        class value(Generic[T]):
-            content: T
+    def validate(self, value: Any, info: ValidationInfo) -> Any:
+        if value is None:
+            raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
+        return value
 
-            def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-                base: type = get_args(self.__orig_class__)[0]
-                errors: list[str] = []
-                if not is_optional(source):
-                    errors.append('Annotated type must be optional')
-                if base not in get_args(source):
-                    errors.append('Base type must match annotated type')
-                if len(errors) > 0:
-                    raise TypeError(', '.join(errors))
-                # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
-                # raised by mypy
-                return core_schema.with_info_after_validator_function(
-                    function=self.validate,
-                    schema=handler(source),
-                    field_name=handler.field_name)
 
-            def validate(self, value: Optional[T], info: ValidationInfo) -> T:
-                if value is None:
-                    return self.content
-                return value
-
-            @staticmethod
-            def consistent_list(elems: list['pg_table_meta.default.value']) -> bool:
-                if len(elems) <= 0:
-                    return True
-                initial: pg_table_meta.default.value = elems[0]
-                consistent: bool = True
-                for elem in elems:
-                    consistent = consistent and elem.value == initial.value
-                return consistent
-
-        @dataclass
-        class nextval:
-            seq: pg_sequence
-
-            def __get_pydantic_core_schema__(self, source: type, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-                base_seq: type = self.seq.__bases__[0]
-                errors: list[str] = []
-                if is_optional(source):
-                    errors.append('Annotated type must not be optional')
-                if base_seq is not source:
-                    errors.append('Sequence type must match annotated type')
-                if len(errors) > 0:
-                    raise TypeError(', '.join(errors))
-                # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
-                # raised by mypy
-                return core_schema.with_info_after_validator_function(
-                    function=self.validate,
-                    schema=handler(source),
-                    field_name=handler.field_name)
-
-            def validate(self, value: Any, info: ValidationInfo) -> Any:
-                if value is None:
-                    raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
-                return value
-
-            @staticmethod
-            def consistent_list(elems: list['pg_table_meta.default.nextval']):
-                if len(elems) <= 0:
-                    return True
-                initial: pg_table_meta.default.nexval = elems[0]
-                consistent: bool = True
-                for elem in elems:
-                    consistent = consistent and elem.seq.__name__ != initial.seq.__name__
-                return consistent
+table_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(pg_table_definition_flow_root)
 
 
 # una tabla puede heredar unicamente de otra tabla
@@ -251,28 +187,37 @@ class _TableValidateExistingColumnsNode(SingleChoiceDefinitionFlowNode):
             raise FlowNodeException(self.name, [f'Class {target} must define columns.'])
 
 
-class _TableValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
-    def __init__(self,
-                 restricted: list[type]):
+class _TableValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
+    def __init__(self):
         super().__init__('table-validate-existing-columns-node',
-                         restricted)
+                         [pg_table_foreign_key,
+                          pg_table_primary_key,
+                          pg_table_index,
+                          pg_table_unique_index,
+                          pg_check,
+                          pg_default_value,
+                          pg_default_sequence_nextval,
+                          pg_comment])
 
 
-class _TableValidateUniqueMetadataTypesNode(CommonValidateUniqueMetadataTypesNode):
-    def __init__(self,
-                 unique: list[type]):
+class _TableValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
+    def __init__(self):
         super().__init__('table-validate-existing-columns-node',
-                         unique)
+                         [pg_table_foreign_key,
+                          pg_table_primary_key,
+                          pg_default_value,
+                          pg_default_sequence_nextval,
+                          pg_comment,
+                          pg_check])
 
 
-class _TableValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
-    def __init__(self,
-                 *,
-                 type_subclass: list[type],
-                 type_instance: list[type]):
+class _TableValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
+    def __init__(self):
         super().__init__('table-validate-existing-columns-node',
-                         type_subclass=type_subclass,
-                         type_instance=type_instance)
+                         type_subclass=[pg_enum,
+                                        pg_builtin,
+                                        pg_composite],
+                         type_instance=[pg_builtin])
 
 
 class _TableDependsOnValidationNodes:
@@ -285,30 +230,13 @@ class _TableDependsOnValidationNodes:
                 'table-validate-existing-columns-node')
 
 
-class _TableMergeInheritedFieldsNode(CommonMergeInheritedFieldsNode,
-                                     _TableDependsOnValidationNodes):
-    def __init__(self):
-        _TableDependsOnValidationNodes.__init__(self)
-        CommonMergeInheritedFieldsNode.__init__(
-            self,
-            'table-merge-inherited-fields-node',
-            pg_table,
-            (pg_table_meta.check, ),
-            (pg_table_meta.default.value,
-             pg_table_meta.default.nextval))
-
-
-class _TableDependsOnValidationAndMergeNodes(_TableDependsOnValidationNodes):
-    def get_dependencies(self) -> tuple[str]:
-        return (*(super().get_dependencies()),
-                'table-merge-inherited-fields-node')
-
-
 class _TableExtractIndexDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
-                                                      ValidatesConflictingDefinitions,
-                                                      _TableDependsOnValidationAndMergeNodes):
+                                                      _TableDependsOnValidationNodes):
     """
-    _Table index can be set via decorators or inferred from field metadata
+    It used to inherit from a class called ValidatesConflictingDefinitions to check if any indexes
+    had been injected through private properties, but in case we decide to implement direct 
+    (not inferred) index definition, then it will be done via decorators, and it wont be detected
+    by this flow
     """
 
     def __init__(self):
@@ -317,8 +245,7 @@ class _TableExtractIndexDefinitionFromDeclarationNode(SingleChoiceDefinitionFlow
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         indexes: list[dict[str, Any]] = [ix for ix in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_meta.index,
-            self._base_class,
+            pg_table_index,
             lambda field_name, index: {
                 'column_name': field_name,
                 'type':   index.type,
@@ -332,24 +259,27 @@ class _TableExtractIndexDefinitionFromDeclarationNode(SingleChoiceDefinitionFlow
                     'column_name': ordered_set_accumulator}) for ix_name in grouped_by_name]
             if len(definition) <= 0:
                 return
-            self.check_conflicting_definitions(target, 'indexes')
             accumulator.add_definition('indexes', definition)
         except Exception as e:
             raise FlowNodeException(self.name, [str(e)])
 
 
 class _TableExtractPrimaryKeyDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
-                                                           ValidatesConflictingDefinitions,
-                                                           _TableDependsOnValidationAndMergeNodes):
-    # un campo solo puede tener una declaracion de builtin
+                                                           _TableDependsOnValidationNodes):
+    """
+    It used to inherit from a class called ValidatesConflictingDefinitions to check if any indexes
+    had been injected through private properties, but in case we decide to implement direct 
+    (not inferred) index definition, then it will be done via decorators, and it wont be detected
+    by this flow
+    """
+
     def __init__(self):
         super().__init__('table-extract-primary-key-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         pks: list[dict[str, Any]] = [pk for pk in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_meta.primary_key,
-            self._base_class,
+            pg_table_primary_key,
             lambda field_name, pk: {
                 'column_name': field_name,
                 'name':   pk.name})]
@@ -361,24 +291,27 @@ class _TableExtractPrimaryKeyDefinitionFromDeclarationNode(SingleChoiceDefinitio
                     'column_name': ordered_set_accumulator}) for pk_name in grouped_by_name]
             if len(definition) <= 0:
                 return
-            self.check_conflicting_definitions(target, 'primary_key')
             accumulator.add_definition('primary_key', definition)
         except Exception as e:
             raise FlowNodeException(self.name, [str(e)])
 
 
 class _TableExtractForeignKeyDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
-                                                           ValidatesConflictingDefinitions,
-                                                           _TableDependsOnValidationAndMergeNodes):
-    # un campo solo puede tener una declaracion de builtin
+                                                           _TableDependsOnValidationNodes):
+    """
+    It used to inherit from a class called ValidatesConflictingDefinitions to check if any indexes
+    had been injected through private properties, but in case we decide to implement direct 
+    (not inferred) index definition, then it will be done via decorators, and it wont be detected
+    by this flow
+    """
+
     def __init__(self):
         super().__init__('table-extract-foreign-keys-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         fks: list[dict[str, Any]] = [fk for fk in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_meta.foreign_key,
-            self._base_class,
+            pg_table_foreign_key,
             lambda field_name, fk: {
                 'name':                    fk.name,
                 'other_class_name':        fk.other_class.__name__,
@@ -395,24 +328,27 @@ class _TableExtractForeignKeyDefinitionFromDeclarationNode(SingleChoiceDefinitio
                     'other_class_column_name': ordered_set_accumulator}) for fk_name in grouped_by_name]
             if len(definition) <= 0:
                 return
-            self.check_conflicting_definitions(target, 'foreign_keys')
             accumulator.add_definition('foreign_keys', definition)
         except Exception as e:
             raise FlowNodeException(self.name, [str(e)])
 
 
 class _TableExtractUniqueIndexDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
-                                                            ValidatesConflictingDefinitions,
-                                                            _TableDependsOnValidationAndMergeNodes):
-    # un campo solo puede tener una declaracion de builtin
+                                                            _TableDependsOnValidationNodes):
+    """
+    It used to inherit from a class called ValidatesConflictingDefinitions to check if any indexes
+    had been injected through private properties, but in case we decide to implement direct 
+    (not inferred) index definition, then it will be done via decorators, and it wont be detected
+    by this flow
+    """
+
     def __init__(self):
         super().__init__('table-extract-unique-indexes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         uixs: list[dict[str, Any]] = [uix for uix in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_meta.unique_index,
-            self._base_class,
+            pg_table_unique_index,
             lambda field_name, uix: {
                 'column_name': field_name,
                 'type':        uix.type,
@@ -426,23 +362,19 @@ class _TableExtractUniqueIndexDefinitionFromDeclarationNode(SingleChoiceDefiniti
                     'column_name': ordered_set_accumulator}) for uix_name in grouped_by_name]
             if len(definition) <= 0:
                 return
-            self.check_conflicting_definitions(target, 'unique_indexes')
             accumulator.add_definition('unique_indexes', definition)
         except Exception as e:
             raise FlowNodeException(self.name, [str(e)])
 
 
 class _TableExtractInheritanceDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
-                                                            _TableDependsOnValidationAndMergeNodes):
-    # un campo solo puede tener una declaracion de builtin
+                                                            _TableDependsOnValidationNodes):
     def __init__(self):
         super().__init__('table-extract-base-classes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         try:
-            inherited: list[type] = extract_by_instance_type_from_inherited_classes(
-                target,
-                pg_table)
+            inherited: list[type] = target.__bases__
             if len(inherited) > 0:
                 accumulator.add_definition('inherited', inherited)
         except Exception as e:
@@ -450,7 +382,7 @@ class _TableExtractInheritanceDefinitionFromDeclarationNode(SingleChoiceDefiniti
 
 
 class _TableExtractColumnDefinitionFromDeclarationNode(SingleChoiceDefinitionFlowNode,
-                                                       _TableDependsOnValidationAndMergeNodes):
+                                                       _TableDependsOnValidationNodes):
     def __init__(self):
         super().__init__('table-extract-columns-node')
 
@@ -459,7 +391,7 @@ class _TableExtractColumnDefinitionFromDeclarationNode(SingleChoiceDefinitionFlo
         columns: list[dict[str, Any]] = []
         ctr: int = 0
         for name, info in target.model_fields.items():
-            check: Optional[pg_table_meta.check] = extract_first_instance_from_field_metadata(info, pg_table_meta.check)
+            check: Optional[pg_check] = extract_first_instance_from_field_metadata(info, pg_check)
             col_data: dict[str, Any] = {
                 'name': name,
                 'type_name': info.annotation.__name__}
@@ -467,18 +399,12 @@ class _TableExtractColumnDefinitionFromDeclarationNode(SingleChoiceDefinitionFlo
             ctr += 1
             if check is not None:
                 col_data['check_constraint'] = check.as_str()
-            comment: Optional[pg_table_meta.comment] = extract_first_instance_from_field_metadata(info, pg_table_meta.comment)
+            comment: Optional[pg_comment] = extract_first_instance_from_field_metadata(info, pg_comment)
             col_data['comment'] = comment
             columns.append(col_data)
         if len(columns) <= 0:
             raise FlowNodeException(self.name, [f'Class {target} must declare columns.'])
         accumulator.add_definition('columns', columns)
-
-
-class _TableExtractCheckConstraintsNode(CommonExtractCheckConstraintsNode,
-                                        _TableDependsOnValidationAndMergeNodes):
-    def __init__(self):
-        super().__init__('table-extract-check-constraints-node')
 
 
 class _TableStoreExtractedPrimaryKeyNode(SingleChoiceDefinitionFlowNode):
@@ -537,14 +463,6 @@ class _TableStoreExtractedIndexNode(SingleChoiceDefinitionFlowNode):
     def get_dependencies(self) -> tuple[str]:
         return ('table-extract-unique-indexes-node',
                 'table-extract-index-node')
-
-
-class _TableStoreCheckConstraintsNode(CommonStoreCheckConstraintsNode):
-    def __init__(self):
-        super().__init__('table-store-check-constraints-node')
-
-    def get_dependencies(self) -> tuple[str]:
-        return ('table-extract-check-constraints-node', )
 
 
 class _TableStoreExtractedForeignKeyNode(SingleChoiceDefinitionFlowNode):
@@ -631,66 +549,28 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         return ('table-store-columns-node', )
 
 
-_table_node_factory: DefinitionFlowNodeFactory = DefinitionFlowNodeFactory()
-_last_node: Optional[DefinitionFlowNode] = None
+table_flow_builder\
+    .at_work_path('validation')\
+        .add_node(_TableValidateExistingColumnsNode)\
+        .add_node(_TableValidateExistingColumnsNode)\
+        .add_node(_TableValidateExistingColumnsNode)\
+        .add_node(_TableValidateConsistentBaseClassesNode)\
+        .add_node(_TableValidateRestrictedMetadataTypesNode)\
+        .add_node(_TableValidateUniqueMetadataTypesNode)\
+        .add_node(_TableValidateFieldsBaseTypeNode)\
+    .at_work_path('extraction')\
+        .add_node(_TableExtractIndexDefinitionFromDeclarationNode).critical()\
+        .add_node(_TableExtractPrimaryKeyDefinitionFromDeclarationNode)\
+        .add_node(_TableExtractForeignKeyDefinitionFromDeclarationNode)\
+        .add_node(_TableExtractUniqueIndexDefinitionFromDeclarationNode)\
+        .add_node(_TableExtractInheritanceDefinitionFromDeclarationNode)\
+        .add_node(_TableExtractColumnDefinitionFromDeclarationNode)\
+    .at_work_path('')\
+        .add_node(_TableStoreExtractedPrimaryKeyNode).critical()\
+        .add_node(_TableStoreExtractedIndexNode)\
+        .add_node(_TableStoreExtractedForeignKeyNode)\
+        .add_node(_TableStoreExtractedInheritedClassesNode)\
+        .add_node(_TableStoreExtractedColumnsNode)\
+        .add_node(_TableStoreFinalDefinitionNode)
 
-
-with _table_node_factory.at_work_path('validation') as fact:
-    _last_node = _pg_table_definition_flow_root\
-        .set_next(fact.get_definition_node(_TableValidateExistingColumnsNode))
-    _last_node = _last_node\
-        .set_next(fact.get_definition_node(_TableValidateExistingColumnsNode))\
-        .set_next(fact.get_definition_node(_TableValidateExistingColumnsNode))\
-        .set_next(fact.get_definition_node(_TableValidateConsistentBaseClassesNode))\
-        .set_next(fact.get_definition_node(_TableValidateRestrictedMetadataTypesNode,
-                                           [pg_table_meta.foreign_key,
-                                            pg_table_meta.primary_key,
-                                            pg_table_meta.index,
-                                            pg_table_meta.unique_index,
-                                            pg_table_meta.check,
-                                            pg_table_meta.default.value,
-                                            pg_table_meta.default.nextval,
-                                            pg_table_meta.comment]))\
-        .set_next(fact.get_definition_node(_TableValidateUniqueMetadataTypesNode,
-                                           [pg_table_meta.foreign_key,
-                                            pg_table_meta.primary_key,
-                                            pg_table_meta.default.value,
-                                            pg_table_meta.default.nextval,
-                                            pg_table_meta.comment,
-                                            pg_table_meta.check]))\
-        .set_next(fact.get_definition_node(_TableValidateFieldsBaseTypeNode,
-                                           type_subclass=[pg_enum,
-                                                          pg_builtin,
-                                                          pg_composite],
-                                           type_instance=[pg_builtin]))
-
-with _table_node_factory.at_work_path('merge') as fact:
-    _last_node = _last_node\
-        .set_next(fact.get_definition_node(_TableMergeInheritedFieldsNode).critical())
-
-with _table_node_factory.at_work_path('extraction') as fact:
-    _last_node = _last_node\
-        .set_next(fact.get_definition_node(_TableExtractIndexDefinitionFromDeclarationNode).critical())\
-        .set_next(fact.get_definition_node(_TableExtractCheckConstraintsNode))\
-        .set_next(fact.get_definition_node(_TableExtractPrimaryKeyDefinitionFromDeclarationNode))\
-        .set_next(fact.get_definition_node(_TableExtractForeignKeyDefinitionFromDeclarationNode))\
-        .set_next(fact.get_definition_node(_TableExtractUniqueIndexDefinitionFromDeclarationNode))\
-        .set_next(fact.get_definition_node(_TableExtractInheritanceDefinitionFromDeclarationNode))\
-        .set_next(fact.get_definition_node(_TableExtractColumnDefinitionFromDeclarationNode))
-
-with _table_node_factory.at_work_path('built') as fact:
-    _last_node = _last_node\
-        .set_next(fact.get_definition_node(_TableStoreExtractedPrimaryKeyNode).critical())\
-        .set_next(fact.get_definition_node(_TableStoreExtractedIndexNode))\
-        .set_next(fact.get_definition_node(_TableStoreExtractedForeignKeyNode))\
-        .set_next(fact.get_definition_node(_TableStoreExtractedInheritedClassesNode))\
-        .set_next(fact.get_definition_node(_TableStoreExtractedColumnsNode))\
-        .set_next(fact.get_definition_node(_TableStoreCheckConstraintsNode))
-
-with _table_node_factory.at_work_path('') as fact:
-    _last_node = _last_node\
-        .set_next(fact.get_definition_node(_TableStoreFinalDefinitionNode))
-
-__all__ = {
-    'pg_table': pg_table,
-    'pg_table_meta': pg_table_meta}
+__all__ = {'pg_table': pg_table}

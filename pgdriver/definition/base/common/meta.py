@@ -20,10 +20,10 @@ from pydantic_core import\
 from pydantic import\
     GetCoreSchemaHandler,\
     ValidationInfo
+from ...inspection import\
+    is_optional
 from pydantic import\
     BaseModel
-from typing_extensions import\
-    Self
 
 
 class SupportLen(Protocol):
@@ -476,44 +476,44 @@ class pg_check(ABC, Generic[T]):
         self.predicate = predicate
         self.name = name
         self._parent_check: Optional[pg_check] = None
+        self._source = None
 
     def get_parent(self) -> Optional['pg_check']:
         return self._parent_check
 
-    def set_parent(self, other: 'pg_check') -> 'pg_check':
+    def merge(self, other: 'pg_check') -> 'pg_check':
         self._parent_check = other
         return other
 
     def as_str(self, field_name: str):
         return f'({self.predicate.as_str(field_name)})'
 
-
-class pg_model_field_check(pg_check, Generic[T]):
-    def __get_pydantic_core_schema__(self, source: Type[T],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        schema = handler(source)
-        # ignore class pg_meta.check[T] has no attribute __orig_class__ error
-        # raised by mypy
-        self.predicate.check_type(source, get_args(self.__orig_class__)[0],
-                                  pg_check.type_compatibility)
-        return core_schema.with_info_after_validator_function(function=self.validate,
-                                                              schema=schema,
-                                                              field_name=handler.field_name)
-
-    def validate(self, value: T, info: ValidationInfo) -> T:
-        self.predicate.check_value(value, info.data)
-        return value
-
-
-class pg_type_check(pg_check, Generic[T]):
-    def validate_value(self, value: T) -> T:
+    def _validate(self, value: T, info_data: Optional[ValidationInfo] = None) -> T:
+        data = {} if info_data is None else {}
         try:
-            self.predicate.check_value(value, {})
+            self.predicate.check_value(value, data)
         except ValueError as e:
             raise ValueError(f'{self.name}: {str(e)}')
         if self._parent_check is not None:
-            return self._parent_check.validate_value(value)
+            return self._parent_check._validate(value, data)
         return value
+
+    def __get_pydantic_core_schema__(self, source: Type[T],
+                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        self._source = source
+        schema = handler(source)
+        # ignore class pg_meta.check[T] has no attribute __orig_class__ error
+        # raised by mypy
+        self.check_valid_constraint_definition(source)
+        return core_schema.with_info_after_validator_function(function=self.validate_value,
+                                                              schema=schema,
+                                                              field_name=handler.field_name)
+
+    def validate_value(self, value: T, info: ValidationInfo) -> T:
+        if value is None:
+            definition = getattr(self._source, '__pg_definition')()
+            value = definition['default_value'] if 'default_value' in definition else value
+        return self._validate(value, info.data)
 
     def check_valid_constraint_definition(self, target: type) -> None:
         # shouldnt propagate to parent as parent check constraint was validated
@@ -525,3 +525,33 @@ class pg_type_check(pg_check, Generic[T]):
 @dataclass
 class pg_comment:
     value: str
+
+
+class pg_default_value(Generic[T]):
+
+    def __init__(self, content: T) -> None:
+        self.content = content
+        self._source = None
+
+    def __get_pydantic_core_schema__(self, source: Type[T],
+                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        self._source = source
+        # base: type = get_args(self.__orig_bases__)[0]
+        # errors: list[str] = []
+        # if not is_optional(source):
+        #     errors.append('Annotated type must be optional')
+        # if base not in get_args(source):
+        #     errors.append('Base type must match annotated type')
+        # if len(errors) > 0:
+        #     raise TypeError(', '.join(errors))
+        # # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
+        # # raised by mypy
+        return core_schema.with_info_after_validator_function(
+            function=self.validate,
+            schema=handler(source),
+            field_name=handler.field_name)
+
+    def validate(self, value: Optional[T], info: ValidationInfo) -> T:
+        if value is None:
+            return self.content
+        return value
