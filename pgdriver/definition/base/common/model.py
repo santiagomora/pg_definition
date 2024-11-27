@@ -5,7 +5,10 @@ from .flow import\
     FlowAccumulator,\
     FlowNodeException
 from pydantic import\
-    BaseModel
+    BaseModel,\
+    ConfigDict
+from pydantic.fields import\
+    FieldInfo
 from ...inspection import\
     get_field_classified_metadata_appearances,\
     extract_definition_fields,\
@@ -20,9 +23,10 @@ pg_table_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('
 
 class _PGBaseModelMeta(type(BaseModel)):
     def __new__(cls, clsname, clsbases, namespace, **kwargs) -> type[BaseModel]:
+
         rettype: type[BaseModel] = super()\
-            .__new__(cls, clsname, clsbases,
-                     namespace, **(kwargs))
+            .__new__(cls, clsname, clsbases, namespace, **(kwargs))
+
         try:
             if issubclass(rettype, pg_table):
                 execute_definition_flow(rettype, pg_table_definition_flow_root)
@@ -35,9 +39,9 @@ class _PGBaseModelMeta(type(BaseModel)):
 
 class _PGBaseModel(BaseModel, metaclass=_PGBaseModelMeta):
     def __init__(self, **data: Any) -> None:
-        for parent_cls in reversed(self.__class__.mro()[:-2]):
+        for parent_cls in reversed(self.__class__.mro()[1:-4]):
             parent_cls.__pydantic_validator__.validate_python(data, self_instance=self)
-        super().__init__(**data)
+        return super().__init__(**data)
 
 
 class pg_composite(_PGBaseModel):

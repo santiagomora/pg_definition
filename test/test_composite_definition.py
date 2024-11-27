@@ -4,13 +4,14 @@ from pgdriver.definition.build import\
     pg_composite,\
     with_pg_comment,\
     pg_comment,\
-    pg_check
+    pg_check,\
+    with_pg_default_value,\
+    pg_default_value
 from typing_extensions import\
     Annotated
 from pgdriver.definition.base.common.meta import\
-    ge_,\
-    le_,\
-    literal_
+    literal,\
+    this
 from pgdriver.definition.base.common.flow import\
     FlowEndException,\
     FlowNodeException
@@ -82,9 +83,8 @@ def test_composite_flow_detects_invalid_check_in_definition() -> None:
     try:
         class test(pg_composite):
             field_1: Annotated[pg_smallint,
-                               pg_check[pg_smallint](
-                                    name='domain_greater_than_0',
-                                    predicate=ge_[pg_smallint](literal_(0)))]
+                               pg_check(name='domain_greater_than_0',
+                                        predicate=this() >= literal(0))]
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
@@ -136,7 +136,7 @@ def test_composite_flow_extracts_attribute_comment() -> None:
 
 
 def test_composite_flow_extracts_comment() -> None:
-    @with_pg_comment(pg_comment('test comment'))
+    @with_pg_comment('test comment')
     class test(pg_composite):
         field_1: pg_smallint
     assert hasattr(test, '__pg_definition')
@@ -198,13 +198,13 @@ def test_composite_domain_subclass_merges_check_constraints() -> None:
 
     class domain1(test):
         field_1: Annotated[pg_smallint,
-                           pg_check[pg_smallint](name='field1_greater_than_0',
-                                                 predicate=ge_[pg_smallint](literal_(0)))]
+                           pg_check(name='field1_greater_than_0',
+                                    predicate=this() >= literal(0))]
 
     class domain2(domain1):
         field_1: Annotated[pg_smallint,
-                           pg_check[pg_smallint](name='field1_less_than_10',
-                                                 predicate=le_[pg_smallint](literal_(10)))]
+                           pg_check(name='field1_less_than_10',
+                                    predicate=this() <= literal(10))]
 
     class domain3(domain2):
         pass
@@ -215,7 +215,7 @@ def test_composite_domain_subclass_merges_check_constraints() -> None:
     except pydantic_core._pydantic_core.ValidationError as e:
         assert str(e) == '1 validation error for domain2\n\
 field_1\n\
-  Value error, domain2_field1_less_than_10: Less than equal check error: value "11" is greater than "10" [type=value_error, input_value=11, input_type=int]\n\
+  Value error, domain2_field1_less_than_10: constraint validation failed for value "11" [type=value_error, input_value=11, input_type=int]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
     try:
         domain2(field_1=-1)
@@ -223,7 +223,7 @@ field_1\n\
     except pydantic_core._pydantic_core.ValidationError as e:
         assert str(e) == '1 validation error for domain1\n\
 field_1\n\
-  Value error, domain1_field1_greater_than_0: Greater than equal check error: value "-1" is less than "0" [type=value_error, input_value=-1, input_type=int]\n\
+  Value error, domain1_field1_greater_than_0: constraint validation failed for value "-1" [type=value_error, input_value=-1, input_type=int]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
     d2_instance = domain2(field_1=2)
     assert d2_instance.field_1 == 2
@@ -233,7 +233,7 @@ field_1\n\
     except pydantic_core._pydantic_core.ValidationError as e:
         assert str(e) == '1 validation error for domain1\n\
 field_1\n\
-  Value error, domain1_field1_greater_than_0: Greater than equal check error: value "-1" is less than "0" [type=value_error, input_value=-1, input_type=int]\n\
+  Value error, domain1_field1_greater_than_0: constraint validation failed for value "-1" [type=value_error, input_value=-1, input_type=int]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
     try:
         domain3(field_1=11)
@@ -241,7 +241,7 @@ field_1\n\
     except pydantic_core._pydantic_core.ValidationError as e:
         assert str(e) == '1 validation error for domain2\n\
 field_1\n\
-  Value error, domain2_field1_less_than_10: Less than equal check error: value "11" is greater than "10" [type=value_error, input_value=11, input_type=int]\n\
+  Value error, domain2_field1_less_than_10: constraint validation failed for value "11" [type=value_error, input_value=11, input_type=int]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
 
 
@@ -288,13 +288,44 @@ def test_composite_flow_detects_invalid_metadata() -> None:
         assert error is not None
         assert str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_comment'> in field_1 declaration"
     try:
-        class test2(pg_composite):
+        # class test2(pg_composite):
             field_1: Annotated[pg_smallint,
-                               pg_check[pg_smallint](name='field1_greater_than_0',
-                                                     predicate=ge_[pg_smallint](literal_(0)))]
+                               pg_check(name='field1_greater_than_0',
+                                        predicate=this() >= literal(0))]
 
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
         assert error is not None
         assert str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_check'> in field_1 declaration"
+
+
+def test_composite_support_complex_instantiation() -> None:
+    class domain0(pg_smallint):
+        pass
+
+    @with_pg_default_value(2)
+    class domain1(domain0):
+        pass
+
+    assert hasattr(domain1, '__pg_definition')
+    definition: dict[str, str] = getattr(domain1, '__pg_definition')()
+    assert 'default_value' in definition
+    assert definition['default_value'] is not None
+    assert isinstance(definition['default_value'], pg_default_value)
+    assert isinstance(definition['default_value'].default, literal)
+    assert isinstance(definition['default_value'].default._lit, domain1)
+    assert definition['default_value'].default._lit == 2
+
+
+def test_composite_invalid_instances_metadata() -> None:
+    @with_pg_default_value(2)
+    class domain1(pg_smallint):
+        pass
+
+    class test(pg_composite):
+        f1: pg_smallint
+    d = test(f1=1)
+    print(d)
+    print(d.f1, isinstance(d.f1, pg_smallint))
+

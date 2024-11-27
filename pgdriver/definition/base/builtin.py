@@ -1,27 +1,23 @@
 from typing import\
-    Any
+    Any,\
+    Literal
 from pydantic_core import\
-    core_schema,\
-    SchemaValidator
+    core_schema
 from pydantic import\
     GetCoreSchemaHandler
-from datetime import\
-    datetime,\
-    time,\
-    date
 from .common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     DefinitionFlowBuilder,\
     SingleChoiceDefinitionFlowNode,\
     DefinitionFlowNode,\
-    FlowNodeException,\
     MultipleChoiceDefinitionFlowNode,\
     execute_definition_flow
 from typing import \
     Optional
 from .common.node import\
     CommonValidateSingleInheritedClassNode
+import numpy as np
 
 
 # TODO configure flow components runtime dependencies
@@ -33,23 +29,52 @@ class pg_builtin(type):
     def __new__(cls, clsname: str, clsbases: tuple[type],
                 clsdict: dict[str, Any], **kwargs) -> type:
 
-        def __repr__(self):
-            return f'{clsname}({clsbases[0].__repr__(self)})'
+        def __new__(cls_, *args, **kwargs) -> Any:
+            instance = clsbases[0].__new__(cls_, *args, **kwargs)
+            if hasattr(clsbases[0], '__pg_validate_instance__'):
+                instance = clsbases[0].__pg_validate_instance__(instance)
+            return cls_.__pg_validate_instance__(instance)
 
-        def __new__(cls, *args, **kwargs) -> Any:
+        @classmethod
+        def __pg_validate_instance__(cls, instance):
             if hasattr(cls, '__pg_definition'):
-                validator: SchemaValidator = SchemaValidator(cls.__get_pydantic_core_schema__(None, None))
-                validator.validate_python(*args)
                 definition = getattr(cls, '__pg_definition')()
-                if definition['check'] is not None:
-                    definition['check']._validate(*args, **kwargs)
-            return clsbases[0].__new__(clsbases[0], *args, **kwargs)
+                if 'check' in definition and definition['check'] is not None:
+                    instance = definition['check']._validate(instance)
+            return instance
 
-        # we execute the definition flow on the builtin type as well
+        @classmethod
+        def __pg_attempt_to_create_instance__(cls, value, validation_info):
+            if value is None:
+                definition = getattr(cls, '__pg_definition')()
+                default_value = getattr(definition, 'default_value', None)
+                return value if default_value is None else default_value
+            return cls.__pg_create_instance__(value)
+
+        @classmethod
+        def __pg_create_instance__(cls, value):
+            return value if isinstance(value, cls) else cls(value)
+
+        @classmethod
+        def __get_pydantic_core_schema__(
+            cls, source: type,
+            handler: GetCoreSchemaHandler
+        ) -> core_schema.CoreSchema:
+            return core_schema.with_info_plain_validator_function(
+                function=cls.__pg_attempt_to_create_instance__)
+
+        def __repr__(self):
+            return f'{self.__class__.__name__}({self})'
+
         ret_type: type = super()\
             .__new__(cls, clsname, clsbases,
-                     clsdict | {'__new__': __new__,
-                                '__repr__': __repr__})
+                     {'__new__': __new__,
+                      '__repr__': __repr__,
+                      '__pg_validator': None,
+                      '__get_pydantic_core_schema__': __get_pydantic_core_schema__,
+                      '__pg_attempt_to_create_instance__': __pg_attempt_to_create_instance__,
+                      '__pg_create_instance__': __pg_create_instance__,
+                      '__pg_validate_instance__': __pg_validate_instance__} | clsdict)
         execute_definition_flow(ret_type, _pg_builtin_definition_flow_root)
         return ret_type
 
@@ -110,109 +135,104 @@ builtin_builder\
         .end_choice()
 
 
-class pg_int(int, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.int_schema(strict=True, le=0x7fffffff, ge=-0x7fffffff)
+class pg_smallint(np.int16, metaclass=pg_builtin):
+    pass
 
 
-class pg_bigint(int, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.int_schema(strict=True)
+class pg_int(np.int32, metaclass=pg_builtin):
+    pass
 
 
-class pg_smallint(int, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.int_schema(strict=True, le=0x7fff, ge=-0x7fff)
+class pg_bigint(np.int64, metaclass=pg_builtin):
+    pass
 
 
 class pg_text(str, metaclass=pg_builtin):
+    pass
+
+
+class pg_float(np.float32, metaclass=pg_builtin):
+    pass
+
+
+class pg_double(np.float64, metaclass=pg_builtin):
+    pass
+
+
+class pg_char(np.int8, metaclass=pg_builtin):
+    pass
+
+
+class pg_byte(np.byte, metaclass=pg_builtin):
+    pass
+
+
+class pg_boolean(np.bool, metaclass=pg_builtin):
+    pass
+
+
+def _create_from_model_field(cls: type, value: Any, default_unit: str):
+    if isinstance(value, cls):
+        return value
+    elif isinstance(value, tuple):
+        return cls(value[0], value[1])
+    elif isinstance(value, int) or isinstance(value, str):
+        return cls(value, default_unit)
+    raise ValueError(f'Invalid value for {cls.__name__}')
+
+
+# we'll always work with ISO8061 utc timestamps, what will change is
+# how these representations get stored into the database, we will
+# have to define each function for conversion
+class pg_datetime(np.datetime64, metaclass=pg_builtin):
     @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.str_schema(strict=True)
+    def __pg_create_instance__(
+        cls,
+        value: Any
+    ):
+        return _create_from_model_field(cls, value, 'us')
 
 
-class pg_float(float, metaclass=pg_builtin):
+class pg_time(np.datetime64, metaclass=pg_builtin):
+    # pg_time will always be a tuple, as it is possible to specify time units
+    # first parameter can be a 'hh?:mm?:ss?,(...)' string or an integer
+    def __new__(
+        cls,
+        value: str | int,
+        unit: Literal['h', 'm', 's', 'ms', 'us', 'ns', 'fs', 'as'] = 'us'
+    ):
+        if unit not in ('h', 'm', 's', 'ms', 'us', 'ns', 'fs', 'as'):
+            raise ValueError('Invalid unit for pg_time')
+        if isinstance(value, str):
+            value = f'1970-01-01T{value}'
+        return super().__new__(cls, value, unit)
+
     @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.float_schema(strict=True)
+    def __pg_create_instance__(
+        cls,
+        value: Any
+    ):
+        return _create_from_model_field(cls, value, 'us')
 
 
-class pg_double(float, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.float_schema(strict=True)
-
-
-class pg_bytea(bytes, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.bytes_schema(strict=True)
-
-
-class pg_timestamp(datetime, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.datetime_schema(strict=True, tz_constraint='naive')
-
-
-class pg_timestamptz(datetime, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.datetime_schema(strict=True, tz_constraint='aware')
-
-
-class pg_time(time, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.time_schema(strict=True, tz_constraint='naive')
-
-
-class pg_timetz(time, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.time_schema(strict=True, tz_constraint='aware')
-
-
-class pg_date(date, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.date_schema(strict=True)
-
-
-class pg_boolean(int, metaclass=pg_builtin):
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any],
-                                     handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        return core_schema.int_schema(strict=True, ge=0, le=1)
+class pg_date(np.datetime64, metaclass=pg_builtin):
+    def __new__(
+        cls,
+        value: str | int
+    ):
+        return super().__new__(cls, value, 'D')
 
 
 __all__ = {
-    'pg_int':                pg_int,
-    'pg_bigint':             pg_bigint,
-    'pg_smallint':           pg_smallint,
-    'pg_text':               pg_text,
-    'pg_double':             pg_double,
-    'pg_float':              pg_float,
-    'pg_bytea':              pg_bytea,
-    'pg_timestamp':          pg_timestamp,
-    'pg_timestamptz':        pg_timestamptz,
-    'pg_time':               pg_time,
-    'pg_timetz':             pg_timetz,
-    'pg_date':               pg_date,
-    'pg_boolean':            pg_boolean}
-
+    'pg_int':      pg_int,
+    'pg_bigint':   pg_bigint,
+    'pg_smallint': pg_smallint,
+    'pg_text':     pg_text,
+    'pg_double':   pg_double,
+    'pg_float':    pg_float,
+    'pg_byte':     pg_byte,
+    'pg_char':     pg_char,
+    'pg_datetime': pg_datetime,
+    'pg_time':     pg_time,
+    'pg_date':     pg_date,
+    'pg_boolean':  pg_boolean}

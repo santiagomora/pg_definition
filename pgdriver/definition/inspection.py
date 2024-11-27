@@ -18,6 +18,7 @@ from pydantic import\
     BaseModel
 from deepdiff import \
     DeepDiff
+from typing import Iterable
 
 
 # TODO esto deberia ir en su propio archivo porque esta creciendo bastante
@@ -254,3 +255,12 @@ def extract_type(tp: type) -> type:
         return get_args(tp)[0]
     return tp
 
+
+def flatten(items):
+    """Yield items from any nested iterable; see Reference."""
+    for x in items:
+        if isinstance(x, Iterable) and not isinstance(x, (str, bytes)):
+            for sub_x in flatten(x):
+                yield sub_x
+        else:
+            yield x

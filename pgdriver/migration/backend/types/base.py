@@ -2,7 +2,7 @@ from pgdriver.definition.build import\
     pg_table,\
     pg_sequence,\
     pg_bigint,\
-    pg_timestamp,\
+    pg_datetime,\
     pg_enum,\
     pg_text
 from pgdriver.definition.meta import\
@@ -59,7 +59,7 @@ class mgr_migration(pg_table):
             name='mgr_attribute_module_id_fk',
             other_class=mgr_module,
             other_class_column_name='id')]
-    executed_at: pg_timestamp
+    executed_at: pg_datetime
     operation: mgr_migration_operation_enum
 
 
