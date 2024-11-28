@@ -30,6 +30,7 @@ class pg_builtin(type):
                 clsdict: dict[str, Any], **kwargs) -> type:
 
         def __new__(cls_, *args, **kwargs) -> Any:
+            # print(args)
             instance = clsbases[0].__new__(cls_, *args, **kwargs)
             if hasattr(clsbases[0], '__pg_validate_instance__'):
                 instance = clsbases[0].__pg_validate_instance__(instance)
@@ -49,7 +50,8 @@ class pg_builtin(type):
                 definition = getattr(cls, '__pg_definition')()
                 default_value = getattr(definition, 'default_value', None)
                 return value if default_value is None else default_value
-            return cls.__pg_create_instance__(value)
+            creation_method = getattr(cls, '__pg_create_instance_custom__', cls.__pg_create_instance__)
+            return creation_method(value)
 
         @classmethod
         def __pg_create_instance__(cls, value):
@@ -176,7 +178,7 @@ def _create_from_model_field(cls: type, value: Any, default_unit: str):
         return value
     elif isinstance(value, tuple):
         return cls(value[0], value[1])
-    elif isinstance(value, int) or isinstance(value, str):
+    elif isinstance(value, str):
         return cls(value, default_unit)
     raise ValueError(f'Invalid value for {cls.__name__}')
 
@@ -186,7 +188,7 @@ def _create_from_model_field(cls: type, value: Any, default_unit: str):
 # have to define each function for conversion
 class pg_datetime(np.datetime64, metaclass=pg_builtin):
     @classmethod
-    def __pg_create_instance__(
+    def __pg_create_instance_custom__(
         cls,
         value: Any
     ):
@@ -208,7 +210,7 @@ class pg_time(np.datetime64, metaclass=pg_builtin):
         return super().__new__(cls, value, unit)
 
     @classmethod
-    def __pg_create_instance__(
+    def __pg_create_instance_custom__(
         cls,
         value: Any
     ):

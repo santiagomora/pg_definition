@@ -2,10 +2,14 @@ from pgdriver.definition.build import\
     pg_smallint,\
     pg_text,\
     pg_composite,\
+    pg_datetime,\
+    pg_time,\
+    pg_date,\
     with_pg_comment,\
     pg_comment,\
     pg_check,\
     with_pg_default_value,\
+    with_pg_check,\
     pg_default_value
 from typing_extensions import\
     Annotated
@@ -17,12 +21,12 @@ from pgdriver.definition.base.common.flow import\
     FlowNodeException
 from typing import\
     Optional
-from datetime import\
-    date,\
-    datetime,\
-    time
+import numpy as np
 import pydantic_core
-
+from datetime import\
+    datetime,\
+    time,\
+    date
 
 def test_composite_definition_is_correctly_formed() -> None:
     class test(pg_composite):
@@ -300,7 +304,7 @@ def test_composite_flow_detects_invalid_metadata() -> None:
         assert str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_check'> in field_1 declaration"
 
 
-def test_composite_support_complex_instantiation() -> None:
+def test_composite_support_complex_instances() -> None:
     class domain0(pg_smallint):
         pass
 
@@ -317,15 +321,51 @@ def test_composite_support_complex_instantiation() -> None:
     assert isinstance(definition['default_value'].default._lit, domain1)
     assert definition['default_value'].default._lit == 2
 
+    class test1(pg_composite):
+        f1: pg_smallint
+        f2: pg_datetime
+        f3: pg_time
+        f4: pg_date
 
-def test_composite_invalid_instances_metadata() -> None:
-    @with_pg_default_value(2)
-    class domain1(pg_smallint):
+    class test2(pg_composite):
+        f1: test1
+        f2: pg_smallint
+
+    d = test2(f1={'f1': 1, 'f2': ('2020-10-11', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
+    assert isinstance(d.f1.f1, pg_smallint)
+    assert isinstance(d.f1.f2, np.datetime64)
+    assert isinstance(d.f1.f3, np.datetime64)
+    assert isinstance(d.f1.f4, np.datetime64)
+    assert isinstance(d.f2, pg_smallint)
+
+    @with_pg_check(name='constrained_datetime_check', predicate=this() > literal('2020-10-10'))
+    class constrained_datetime(pg_datetime):
         pass
 
-    class test(pg_composite):
-        f1: pg_smallint
-    d = test(f1=1)
-    print(d)
-    print(d.f1, isinstance(d.f1, pg_smallint))
+    class constrained_date(pg_date):
+        pass
 
+    class test3(pg_composite):
+        f1: pg_smallint
+        f2: constrained_datetime
+        f3: pg_time
+        f4: constrained_date
+
+    class test4(pg_composite):
+        f1: test3
+        f2: pg_smallint
+
+    d = test4(f1={'f1': 1, 'f2': ('2020-10-11', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
+    assert isinstance(d.f1.f1, pg_smallint)
+    assert isinstance(d.f1.f2, np.datetime64)
+    assert isinstance(d.f1.f3, np.datetime64)
+    assert isinstance(d.f1.f4, np.datetime64)
+    assert isinstance(d.f2, pg_smallint)
+
+    try:
+        d = test4(f1={'f1': 1, 'f2': ('2020-10-09', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
+    except pydantic_core._pydantic_core.ValidationError as e:
+        assert str(e) == '1 validation error for test4\n\
+f1.f2\n\
+  Value error, constrained_datetime_check: constraint validation failed for value "2020-10-09T00:00:00.000" [type=value_error, input_value=(\'2020-10-09\', \'ms\'), input_type=tuple]\n\
+    For further information visit https://errors.pydantic.dev/2.8/v/value_error'
