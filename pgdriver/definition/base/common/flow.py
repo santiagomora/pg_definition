@@ -217,14 +217,6 @@ class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
                     node = node.get_next(acc)
 
 
-class DefinitionFlowNodeFactory(HandlesWorkPath):
-    def get_definition_node(self, cls: type[DefinitionFlowNode], *args,
-                            **kwargs) -> DefinitionFlowNode:
-        instance = cls(*args, **kwargs)
-        instance.accumulator_path = self._work_path
-        return instance
-
-
 def execute_definition_flow(on_type: type, root: RootDefinitionFlowNode) -> dict[str, Any]:
     accumulator: FlowAccumulator = FlowAccumulator(on_type)
     root.execute(on_type, accumulator)
@@ -233,6 +225,7 @@ def execute_definition_flow(on_type: type, root: RootDefinitionFlowNode) -> dict
     @classmethod
     def __pg_definition(cls) -> dict[str, Any]:
         return final
+
     setattr(on_type, '__pg_definition', __pg_definition)
 
 

@@ -18,7 +18,7 @@ from typing import \
 from .common.node import\
     CommonValidateSingleInheritedClassNode
 import numpy as np
-
+import warnings
 
 # TODO configure flow components runtime dependencies
 _pg_builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('builtin-definition-flow')
@@ -30,11 +30,12 @@ class pg_builtin(type):
                 clsdict: dict[str, Any], **kwargs) -> type:
 
         def __new__(cls_, *args, **kwargs) -> Any:
-            # print(args)
-            instance = clsbases[0].__new__(cls_, *args, **kwargs)
-            if hasattr(clsbases[0], '__pg_validate_instance__'):
-                instance = clsbases[0].__pg_validate_instance__(instance)
-            return cls_.__pg_validate_instance__(instance)
+            with warnings.catch_warnings(action="ignore"):
+                # catches numpy.datetime64 warning when instancing datetime with timezone
+                instance = clsbases[0].__new__(cls_, *args, **kwargs)
+                if hasattr(clsbases[0], '__pg_validate_instance__'):
+                    instance = clsbases[0].__pg_validate_instance__(instance)
+                return cls_.__pg_validate_instance__(instance)
 
         @classmethod
         def __pg_validate_instance__(cls, instance):

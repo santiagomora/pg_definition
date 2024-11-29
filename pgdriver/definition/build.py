@@ -66,7 +66,7 @@ def with_pg_default_value(*args, **kwargs):
         definition = getattr(target, '__pg_definition')()
         assert definition['default_value'] is None
         value: pg_default_value = pg_default_value(literal(*args, **kwargs))
-        value.default.propagate_basecls(target)
+        value.default.propagate_definition(target)
         definition['default_value'] = value
         return target
 
@@ -93,7 +93,7 @@ class with_pg_check:
 
     def __call__(self, target: type):
         assert type(target) == pg_builtin
-        self._check.predicate.propagate_basecls(target)
+        self._check.predicate.propagate_definition(target)
         definition = getattr(target, '__pg_definition')()
         definition['check'] = self._check
         return target

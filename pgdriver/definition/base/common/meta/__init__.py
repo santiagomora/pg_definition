@@ -47,14 +47,13 @@ class pg_check:
         return f'({str(self.predicate)})'
 
     def _validate(self, value: Any, info_data: Optional[ValidationInfo] = None) -> Any:
-        if not self.predicate.value(value, {} if info_data is None else {}):
+        if not self.predicate.value(value, {} if info_data is None else info_data):
             raise ValueError(f'{self.name}: constraint validation failed for value "{value}"')
         return value
 
     def __get_pydantic_core_schema__(self, source: type,
                                      handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
         self._source = source
-        self.predicate.propagate_basecls(source)
         return core_schema.with_info_after_validator_function(
             function=self.validate_value,
             schema=handler(source),
@@ -93,7 +92,6 @@ class pg_default_value:
         #     raise TypeError(', '.join(errors))
         # # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
         # # raised by mypy
-        self.default.propagate_basecls(source)
         return core_schema.with_info_after_validator_function(
             function=self.validate_value,
             schema=handler(source),

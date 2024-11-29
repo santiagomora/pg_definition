@@ -22,12 +22,15 @@ from .enums import\
     pg_enum
 from .common.meta import\
     pg_check,\
-    pg_comment
+    pg_comment,\
+    LogicOperand
 from ..inspection import\
     extract_definition_fields,\
-    is_field_inherited,\
+    get_field_parent_definition,\
     extract_first_instance_from_field_metadata,\
-    extract_by_instance_type_from_field_info
+    extract_by_instance_type_from_model_fields_info
+from functools import\
+    reduce
 
 
 composite_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(pg_composite_definition_flow_root)
@@ -149,8 +152,11 @@ class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         for name in target.model_fields:
-            if not is_field_inherited(name, target):
+            field_in_parent: Optional[FieldInfo] = get_field_parent_definition(name, target)
+            if field_in_parent is None:
                 raise FlowNodeException(self.name, [f'Additional attribute {name} detected in composite domain definition'])
+            elif field_in_parent.annotation != target.model_fields[name].annotation:
+                raise FlowNodeException(self.name, [f'Composite domain attribute type must match type in parent definition. Expected {target.model_fields[name].annotation} to be {field_in_parent.annotation}'])
 
 
 class _CompositeDomainDependsOnValidationNodes:
@@ -162,8 +168,7 @@ class _CompositeDomainDependsOnValidationNodes:
                 'composite-domain-validate-declared-attributes-node')
 
 
-class _CompositeDomainExtractAttributesDefinitionNode(SingleChoiceDefinitionFlowNode,
-                                                      _CompositeDomainDependsOnValidationNodes):
+class _CompositeDomainExtractAttributesDefinitionNode(SingleChoiceDefinitionFlowNode, _CompositeDomainDependsOnValidationNodes):
     """
     Extract composite attributes
     """
@@ -177,14 +182,31 @@ class _CompositeDomainExtractAttributesDefinitionNode(SingleChoiceDefinitionFlow
         for name, info in extract_definition_fields(target):
             attributes[name] = {
                 'name': name,
-                'type': info.annotation,
-                'check': None}
-            for check in extract_by_instance_type_from_field_info(info, pg_check):
-                check.name = f'{target.__name__}_{check.name}'
-                attributes[name]['check'] = [check] \
-                    if attributes[name]['check'] is None \
-                    else attributes[name]['check'] + [check]
+                'type': info.annotation}
         accumulator.add_definition('attributes', attributes)
+
+
+class _CompositeDomainExtractCheckConstraint(SingleChoiceDefinitionFlowNode, _CompositeDomainDependsOnValidationNodes):
+    """
+    Validate composite attributes, there's two  scenarios according to the base class:
+    1. direct inheritance from pg_composite: it can declare any set of attributes
+    2. inheritance from a pg_composite subclass: declared type can only override 
+    base class attributes. it cannot declare additional fields.
+    """
+
+    def __init__(self):
+        super().__init__('composite-domain-extract-check-constraint-node')
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        final_predicate: LogicOperand = None
+        for name, instance in extract_by_instance_type_from_model_fields_info(target, pg_check):
+            instance.name = f'{target.__name__}_{instance.name}'
+            instance.predicate.propagate_definition(target.model_fields[name].annotation, name)
+            final_predicate = instance.predicate if final_predicate is None else final_predicate & instance.predicate
+        if final_predicate is not None:
+            accumulator.add_definition('check_constraint',
+                                       pg_check(name=f'{target.__name__}_field_constraints',
+                                                predicate=final_predicate))
 
 
 class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
@@ -200,7 +222,8 @@ class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
-        definition['attributes'] = accumulator.get_definition('extraction', 'attributes')
+        definition['attributes'] = accumulator.get_definition('attributes', 'extraction')
+        definition['check'] = accumulator.get_definition('check_constraint', 'extraction')
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
@@ -224,7 +247,8 @@ composite_flow_builder\
             .add_node(_CompositeDomainValidateRestrictedMetadataTypesNode)\
             .add_node(_CompositeDomainValidateAttributesNode)\
         .at_work_path('extraction')\
-            .add_node(_CompositeDomainExtractAttributesDefinitionNode)\
+            .add_node(_CompositeDomainExtractAttributesDefinitionNode).critical()\
+            .add_node(_CompositeDomainExtractCheckConstraint)\
         .at_work_path('')\
             .add_node(_CompositeDomainStoreFinalDefinitionNode).critical()\
             .end_choice()

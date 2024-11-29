@@ -158,16 +158,16 @@ def extract_by_instance_type_from_model_fields_info(
     cls: type[BaseModel],
     instance_type: type,
     conversion_fn: Optional[Callable[[Any], dict[str, Any]]] = None
-) -> Generator[dict[str, Any], None, None]:
+) -> Generator[tuple[str, dict[str, Any] | Any], None, None]:
     """
     Extracts by instance type from direct fields metadata
     """
     for field_name, field_info in extract_definition_fields(cls):
         for meta in extract_by_instance_type_from_field_info(field_info, instance_type):
             if conversion_fn is not None:
-                yield conversion_fn(field_name, meta)
+                yield field_name, conversion_fn(field_name, meta)
             else:
-                yield meta
+                yield field_name, meta
 
 
 def get_classified_metadata_from_fields(
@@ -203,11 +203,11 @@ def get_field_classified_metadata_appearances(
     return res
 
 
-def is_field_inherited(name: str, cls: type) -> bool:
+def get_field_parent_definition(name: str, cls: type) -> Optional[FieldInfo]:
     for icls in cls.__bases__:
         if name in icls.model_fields:
-            return True
-    return False
+            return icls.model_fields[name]
+    return None
 
 
 def set_accumulator(

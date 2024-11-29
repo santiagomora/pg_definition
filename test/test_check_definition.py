@@ -11,6 +11,7 @@ def test_check_arithmetic_predicates_and_values() -> None:
     def test_operation(op: Any, op_str: str) -> None:
         print(op_str)
         assert str(op) == op_str
+        assert eval(str(op)) == eval(op_str)
         assert op.value(None, None) == eval(op_str)
     test_operation(literal(3) + literal(5) + literal(6), '3 + 5 + 6')
     test_operation(literal(3) - (literal(5) + literal(6)), '3 - (5 + 6)')
@@ -62,6 +63,7 @@ def test_check_logic_predicates_and_values() -> None:
     def test_operation(op: Any, op_str: str) -> None:
         print(op_str)
         assert str(op) == op_str
+        assert eval(str(op).lower()) == eval(op_str.lower())
         assert op.value(None, None) == eval(op_str.lower())
     test_operation((literal(5) > literal(4)) & (literal(1) > literal(2)), '(5 > 4) AND (1 > 2)')
     test_operation((literal(1) * ((literal(2) + literal(3)) / (literal(5) * literal(4))) * literal(5)) > (((literal(2) + literal(3)) / (literal(5) * literal(4))) * literal(5)), '(1 * ((2 + 3) / (5 * 4)) * 5) > (((2 + 3) / (5 * 4)) * 5)')

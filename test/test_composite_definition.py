@@ -1,6 +1,7 @@
 from pgdriver.definition.build import\
     pg_smallint,\
     pg_text,\
+    pg_float,\
     pg_composite,\
     pg_datetime,\
     pg_time,\
@@ -15,6 +16,7 @@ from typing_extensions import\
     Annotated
 from pgdriver.definition.base.common.meta import\
     literal,\
+    field,\
     this
 from pgdriver.definition.base.common.flow import\
     FlowEndException,\
@@ -27,6 +29,7 @@ from datetime import\
     datetime,\
     time,\
     date
+
 
 def test_composite_definition_is_correctly_formed() -> None:
     class test(pg_composite):
@@ -110,7 +113,6 @@ def test_composite_flow_detects_invalid_attribute_type() -> None:
             field_7: date
             field_8: bool
     except FlowEndException as e:
-        print(e)
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-fields-base-type-node')
         assert error is not None
@@ -186,14 +188,35 @@ def test_composite_domain_definition_flow_doesnt_allow_field_type_change() -> No
 
         class domain1(test):
             field_1: pg_text
+
+        assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
-                                                         'composite-domain-merge-inherited-fields-node')
+                                                         'composite-domain-validate-declared-attributes-node')
         assert error is not None
-        assert str(error) == "Overwritten field field_1 type in \
-<class 'test_composite_definition.test_composite_domain_definition_flow_doesnt_allow_field_type_change.<locals>.domain1'> \
-must match with type defined in parent class \
-<class 'test_composite_definition.test_composite_domain_definition_flow_doesnt_allow_field_type_change.<locals>.test'>"
+        assert str(error) == "Composite domain attribute type must match type in parent definition. Expected <class 'pgdriver.definition.base.builtin.pg_text'> to be <class 'pgdriver.definition.base.builtin.pg_smallint'>"
+
+
+def test_composite_domain_subclass_check_constraint_correctly_formed() -> None:
+    class test(pg_composite):
+        field_1: pg_smallint
+
+    class domain1(test):
+        field_1: Annotated[pg_smallint,
+                           pg_check(name='field1_greater_than_0',
+                                    predicate=this() >= literal(0))]
+
+    assert hasattr(domain1, '__pg_definition')
+    definition = domain1.__pg_definition()
+    assert 'type' in definition
+    assert definition['type'] == domain1
+    assert 'base_type' in definition
+    assert definition['base_type'] == test
+    assert 'comment' in definition
+    assert definition['comment'] is None
+    assert definition['check'] is not None
+    assert str(definition['check']) == '((VALUE).field_1 >= 0)'
+    assert definition['check'].name == 'domain1_field_constraints'
 
 
 def test_composite_domain_subclass_merges_check_constraints() -> None:
@@ -304,7 +327,7 @@ def test_composite_flow_detects_invalid_metadata() -> None:
         assert str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_check'> in field_1 declaration"
 
 
-def test_composite_support_complex_instances() -> None:
+def test_composite_support_complex_type_creation() -> None:
     class domain0(pg_smallint):
         pass
 
@@ -368,4 +391,22 @@ def test_composite_support_complex_instances() -> None:
         assert str(e) == '1 validation error for test4\n\
 f1.f2\n\
   Value error, constrained_datetime_check: constraint validation failed for value "2020-10-09T00:00:00.000" [type=value_error, input_value=(\'2020-10-09\', \'ms\'), input_type=tuple]\n\
+    For further information visit https://errors.pydantic.dev/2.8/v/value_error'
+
+
+def test_composite_misc_check_tests() -> None:
+    class test(pg_composite):
+        f1: pg_smallint
+        f2: pg_smallint
+
+    class domain(test):
+        f2: Annotated[pg_smallint, pg_check(name='f2_gt_f1', predicate=this() > field('f1'))]
+
+    try:
+        domain(f1=2, f2=1)
+        assert False
+    except pydantic_core._pydantic_core.ValidationError as e:
+        assert str(e) == '1 validation error for domain\n\
+f2\n\
+  Value error, domain_f2_gt_f1: constraint validation failed for value "1" [type=value_error, input_value=1, input_type=int]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'

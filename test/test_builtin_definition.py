@@ -22,6 +22,7 @@ from pgdriver.definition.base.common.meta import\
     literal,\
     this,\
     field
+import numpy as np
 
 
 def test_builtin_definition_is_correctly_formed() -> None:
@@ -165,7 +166,7 @@ def test_builtin_domain_merges_inherited_check_constraint() -> None:
     @with_pg_check(name='domain_less_than_5', predicate=this() <= literal(5))
     class domain1(domain0):
         pass
-    
+
     try:
         domain1(-1)
         # no pasa la prueba
@@ -264,3 +265,14 @@ def test_builtin_timestamp_checks() -> None:
         assert False
     except ValueError as e:
         assert str(e) == 'test_domain0__ge2024: constraint validation failed for value "2024-10-09"'
+
+
+def test_check_respected_when_used_in_ndarray() -> None:
+    @with_pg_check(name='domain_greater_than_0', predicate=this() >= literal(0))
+    class domain0(pg_smallint):
+        pass
+    # TODO: when creating an nparray even though its created with domain0 as dtype
+    # it falls back to numpy underlying type, branching out the type validations in place.
+    # We need to evaluate whats the desired behavior for these instances.
+    d = np.array([1, 2, -1], dtype=domain0)
+    print(repr(d))

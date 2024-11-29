@@ -277,7 +277,7 @@ class _TableExtractPrimaryKeyDefinitionFromDeclarationNode(SingleChoiceDefinitio
         super().__init__('table-extract-primary-key-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        pks: list[dict[str, Any]] = [pk for pk in extract_by_instance_type_from_model_fields_info(
+        pks: list[dict[str, Any]] = [(field, pk) for pk in extract_by_instance_type_from_model_fields_info(
             target,
             pg_table_primary_key,
             lambda field_name, pk: {
@@ -309,7 +309,7 @@ class _TableExtractForeignKeyDefinitionFromDeclarationNode(SingleChoiceDefinitio
         super().__init__('table-extract-foreign-keys-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        fks: list[dict[str, Any]] = [fk for fk in extract_by_instance_type_from_model_fields_info(
+        fks: list[dict[str, Any]] = [(field, fk) for fk in extract_by_instance_type_from_model_fields_info(
             target,
             pg_table_foreign_key,
             lambda field_name, fk: {
@@ -346,7 +346,7 @@ class _TableExtractUniqueIndexDefinitionFromDeclarationNode(SingleChoiceDefiniti
         super().__init__('table-extract-unique-indexes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        uixs: list[dict[str, Any]] = [uix for uix in extract_by_instance_type_from_model_fields_info(
+        uixs: list[dict[str, Any]] = [(field, uix) for uix in extract_by_instance_type_from_model_fields_info(
             target,
             pg_table_unique_index,
             lambda field_name, uix: {

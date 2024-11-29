@@ -28,6 +28,11 @@ from functools import\
     reduce
 from psycopg import\
     sql
+from typing_extensions import\
+    Self
+
+
+# TODO this whole module will eventually be cythonized
 
 
 T = TypeVar('T')
@@ -47,7 +52,7 @@ class Operand(Generic[T]):
         pass
 
     @abstractmethod
-    def propagate_basecls(self, basecls: type) -> None:
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
         pass
 
 
@@ -157,9 +162,10 @@ class ArithmeticOperation(ArithmeticOperand, list[ArithmeticOperand]):
             repr(operand) for operand in self\
         ])})'
 
-    def propagate_basecls(self, basecls: type) -> None:
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
         for operand in self:
-            operand.propagate_basecls(basecls)
+            operand.propagate_definition(basecls, fieldname)
+        return self
 
     @abstractmethod
     def value(self, value: Any, info: dict[str, Any]) -> Any:
@@ -169,23 +175,26 @@ class ArithmeticOperation(ArithmeticOperand, list[ArithmeticOperand]):
 class LogicOperandSpec(LogicOperand):
     def __init__(self, operand1: ArithmeticOperand,
                  operand2: ArithmeticOperand, opstr: str) -> None:
-        self.operand1, self.op1str = operand1, str(operand1)
-        self.operand2, self.op2str = operand2, str(operand2)
+        self.operand1 = operand1
+        self.operand2 = operand2
         self.opstr = opstr
-        if isinstance(operand1, ArithmeticOperation):
-            self.op1str = f'({self.op1str})'
-        if isinstance(operand2, ArithmeticOperation):
-            self.op2str = f'({self.op2str})'
 
     def __repr__(self):
         return f'{self.__class__.__name__}({repr(self.operand1)}, {repr(self.operand2)})'
 
     def __str__(self) -> str:
-        return f'{self.op1str} {self.opstr} {self.op2str}'
+        op1str = str(self.operand1)
+        op2str = str(self.operand2)
+        if isinstance(self.operand1, ArithmeticOperation):
+            op1str = f'({op1str})'
+        if isinstance(self.operand2, ArithmeticOperation):
+            op2str = f'({op2str})'
+        return f'{op1str} {self.opstr} {op2str}'
 
-    def propagate_basecls(self, basecls: type) -> None:
-        self.operand1.propagate_basecls(basecls)
-        self.operand2.propagate_basecls(basecls)
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+        self.operand1.propagate_definition(basecls, fieldname)
+        self.operand2.propagate_definition(basecls, fieldname)
+        return self
 
 
 class LogicOperation(LogicOperand, list[LogicOperandSpec]):
@@ -202,26 +211,38 @@ class LogicOperation(LogicOperand, list[LogicOperandSpec]):
     def __repr__(self):
         return f'{self.__class__.__name__}({", ".join(repr(op) for op in self)})'
 
-    def propagate_basecls(self, basecls: type) -> None:
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
         for op in self:
-            op.propagate_basecls(basecls)
+            op.propagate_definition(basecls, fieldname)
+        return self
 
 
 class this(ArithmeticOperand):
-    def __str__(self) -> str:
-        return 'VALUE'
+    def __init__(self) -> None:
+        # el field debe ser un atributo de la clase que registra la anotacion
+        self._fieldname: Optional[str] = None
 
-    def __repr__(self):
-        return 'this()'
+    def __str__(self) -> str:
+        if self._fieldname is not None:
+            return f'(VALUE).{self._fieldname}'
+        else:
+            return 'VALUE'
+
+    def __repr__(self) -> str:
+        if self._fieldname is not None:
+            return f"this(fieldname={self._fieldname})"
+        else:
+            return 'this()'
 
     def value(self, value: Any, info: dict[str, Any]) -> Any:
         return value
 
-    def propagate_basecls(self, basecls: type) -> None:
-        pass
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+        self._fieldname = fieldname
+        return self
 
 
-class field(this):
+class field(ArithmeticOperand):
     def __init__(self, fieldname: str) -> None:
         # el field debe ser un atributo de la clase que registra la anotacion
         self._fieldname: str = fieldname
@@ -237,10 +258,10 @@ class field(this):
         return f'field({self._fieldname})'
 
     def __str__(self) -> str:
-        return f'({self}).{self._fieldname}'
+        return f'(VALUE).{self._fieldname}'
 
-    def propagate_basecls(self, basecls: type) -> None:
-        pass
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+        return self
 
 
 class literal(ArithmeticOperand):
@@ -258,9 +279,10 @@ class literal(ArithmeticOperand):
     def value(self, value: Any, info: dict[str, Any]) -> Any:
         return self._args[0] if self._lit is None else self._lit
 
-    def propagate_basecls(self, basecls: type) -> None:
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
         if not isinstance(self._lit, basecls):
             self._lit = basecls(*self._args, **self._kwargs)
+        return self
 
 
 class length(ArithmeticOperand):
@@ -276,8 +298,9 @@ class length(ArithmeticOperand):
     def value(self, value: Any, info: dict[str, Any]) -> Any:
         return len(self.target.value(value, info))
 
-    def propagate_basecls(self, basecls: type) -> None:
-        self.target.propagate_basecls(basecls)
+    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+        self.target.propagate_definition(basecls, fieldname)
+        return self
 
 
 class _add(ArithmeticOperation):
