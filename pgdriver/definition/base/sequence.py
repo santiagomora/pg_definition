@@ -82,8 +82,8 @@ class with_pg_max_value(Generic[T]):
 
 
 class with_pg_min_value(Generic[T]):
-    def __init__(self, max_value: T):
-        self._max_value = max_value
+    def __init__(self, min_value: T):
+        self._min_value = min_value
 
     def __call__(self, wrapped_cls) -> type:
         if not isinstance(wrapped_cls, pg_sequence):

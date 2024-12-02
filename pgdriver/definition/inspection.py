@@ -118,6 +118,7 @@ def extract_first_appearance_from_list(
     return None
 
 
+# TODO rename this to extract_by_instance_type_from_field_info_metadata
 def extract_by_instance_type_from_field_info(
     info: FieldInfo,
     instance_type: type
@@ -152,6 +153,16 @@ def extract_definition_fields(cls: type) -> Generator[tuple[str, FieldInfo], Non
                     direct_fields.remove(inherited_field_name)
     for field_name in direct_fields:
         yield (field_name, cls.model_fields[field_name])
+
+
+def extract_inherited_fields(cls: type) -> Generator[tuple[str, FieldInfo], None, None]:
+    """
+    Exclude definition fields and yield only those fields inherited from base classes
+    """
+    model_fields = set(cls.model_fields.keys())
+    direct_fields = set([field for field, _ in extract_definition_fields(cls)])
+    for inherited_field in (model_fields - direct_fields):
+        yield inherited_field, cls.model_fields[inherited_field]
 
 
 def extract_by_instance_type_from_model_fields_info(

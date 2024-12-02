@@ -30,6 +30,15 @@ from psycopg import\
     sql
 from typing_extensions import\
     Self
+from enum import \
+    Enum,\
+    auto
+
+
+class OperandDefinitionContext(Enum):
+    BUILTIN_DOMAIN = auto()
+    COMPOSITE_DOMAIN = auto()
+    TABLE = auto()
 
 
 # TODO this whole module will eventually be cythonized
@@ -52,7 +61,10 @@ class Operand(Generic[T]):
         pass
 
     @abstractmethod
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
         pass
 
 
@@ -162,9 +174,12 @@ class ArithmeticOperation(ArithmeticOperand, list[ArithmeticOperand]):
             repr(operand) for operand in self\
         ])})'
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
         for operand in self:
-            operand.propagate_definition(basecls, fieldname)
+            operand.propagate_definition(basecls, fieldname, context)
         return self
 
     @abstractmethod
@@ -191,9 +206,12 @@ class LogicOperandSpec(LogicOperand):
             op2str = f'({op2str})'
         return f'{op1str} {self.opstr} {op2str}'
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
-        self.operand1.propagate_definition(basecls, fieldname)
-        self.operand2.propagate_definition(basecls, fieldname)
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
+        self.operand1.propagate_definition(basecls, fieldname, context)
+        self.operand2.propagate_definition(basecls, fieldname, context)
         return self
 
 
@@ -211,9 +229,12 @@ class LogicOperation(LogicOperand, list[LogicOperandSpec]):
     def __repr__(self):
         return f'{self.__class__.__name__}({", ".join(repr(op) for op in self)})'
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
         for op in self:
-            op.propagate_definition(basecls, fieldname)
+            op.propagate_definition(basecls, fieldname, context)
         return self
 
 
@@ -221,24 +242,36 @@ class this(ArithmeticOperand):
     def __init__(self) -> None:
         # el field debe ser un atributo de la clase que registra la anotacion
         self._fieldname: Optional[str] = None
+        self._context: Optional[OperandDefinitionContext] = None
 
     def __str__(self) -> str:
-        if self._fieldname is not None:
-            return f'(VALUE).{self._fieldname}'
-        else:
+        if self._context == OperandDefinitionContext.BUILTIN_DOMAIN:
             return 'VALUE'
+        else:
+            if self._fieldname is None:
+                raise ValueError(f'Operand {repr(self)} definition not correctly propagated.')
+            if self._context == OperandDefinitionContext.TABLE:
+                return f'{self._fieldname}'
+            elif self._context == OperandDefinitionContext.COMPOSITE_DOMAIN:
+                return f'(VALUE).{self._fieldname}'
+            else:
+                raise ValueError(f'Invalid operand {repr(self)} definition context')
 
     def __repr__(self) -> str:
         if self._fieldname is not None:
-            return f"this(fieldname={self._fieldname})"
+            return f"this(fieldname={self._fieldname}, context={self._context})"
         else:
             return 'this()'
 
     def value(self, value: Any, info: dict[str, Any]) -> Any:
         return value
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
         self._fieldname = fieldname
+        self._context = context
         return self
 
 
@@ -260,7 +293,10 @@ class field(ArithmeticOperand):
     def __str__(self) -> str:
         return f'(VALUE).{self._fieldname}'
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
         return self
 
 
@@ -279,7 +315,10 @@ class literal(ArithmeticOperand):
     def value(self, value: Any, info: dict[str, Any]) -> Any:
         return self._args[0] if self._lit is None else self._lit
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
         if not isinstance(self._lit, basecls):
             self._lit = basecls(*self._args, **self._kwargs)
         return self
@@ -298,8 +337,11 @@ class length(ArithmeticOperand):
     def value(self, value: Any, info: dict[str, Any]) -> Any:
         return len(self.target.value(value, info))
 
-    def propagate_definition(self, basecls: type, fieldname: Optional[str] = None) -> Self:
-        self.target.propagate_definition(basecls, fieldname)
+    def propagate_definition(
+        self, basecls: type, fieldname: Optional[str],
+        context: OperandDefinitionContext
+    ) -> Self:
+        self.target.propagate_definition(basecls, fieldname, context)
         return self
 
 

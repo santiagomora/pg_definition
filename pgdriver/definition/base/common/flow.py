@@ -214,6 +214,8 @@ class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
                         raise e
                     except RuntimeError as e:
                         raise e
+                    except Exception as e:
+                        accumulator.add_exception(self.name, FlowNodeException(node.name, [str(e)]))
                     node = node.get_next(acc)
 
 

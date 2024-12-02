@@ -18,6 +18,7 @@ from .base.builtin import\
 from .base.common.meta import\
     pg_check,\
     LogicOperand,\
+    OperandDefinitionContext,\
     pg_comment,\
     literal,\
     pg_default_value
@@ -65,8 +66,8 @@ def with_pg_default_value(*args, **kwargs):
         assert hasattr(target.__bases__[0], '__pg_definition')
         definition = getattr(target, '__pg_definition')()
         assert definition['default_value'] is None
-        value: pg_default_value = pg_default_value(literal(*args, **kwargs))
-        value.default.propagate_definition(target)
+        value: pg_default_value = pg_default_value(*args, **kwargs)
+        value.default.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
         definition['default_value'] = value
         return target
 
@@ -93,7 +94,7 @@ class with_pg_check:
 
     def __call__(self, target: type):
         assert type(target) == pg_builtin
-        self._check.predicate.propagate_definition(target)
+        self._check.predicate.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
         definition = getattr(target, '__pg_definition')()
         definition['check'] = self._check
         return target

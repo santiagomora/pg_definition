@@ -3,7 +3,8 @@ from .predicate import\
     field,\
     literal,\
     length,\
-    LogicOperand
+    LogicOperand,\
+    OperandDefinitionContext
 from pydantic_core import\
     core_schema
 from pydantic import\
@@ -76,8 +77,8 @@ T = TypeVar('T')
 
 class pg_default_value:
 
-    def __init__(self, value: literal) -> None:
-        self.default = value
+    def __init__(self, *args, **kwargs) -> None:
+        self.default = literal(*args, **kwargs)
 
     def __get_pydantic_core_schema__(self, source: type,
                                      handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:

@@ -12,7 +12,10 @@ from .common.model import\
     pg_composite,\
     ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
-    ModelValidateFieldsBaseTypeNode
+    ModelValidateFieldsBaseTypeNode,\
+    ModelDiscardMetaInstancesFromInheritedFieldsNode,\
+    ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
+    ModelExtractCheckConstraintsNode
 from .common.node import\
     CommonValidateSingleInheritedClassNode,\
     CommonDetermineIfTargetIsDomainNode
@@ -23,7 +26,8 @@ from .enums import\
 from .common.meta import\
     pg_check,\
     pg_comment,\
-    LogicOperand
+    LogicOperand,\
+    OperandDefinitionContext
 from ..inspection import\
     extract_definition_fields,\
     get_field_parent_definition,\
@@ -51,9 +55,7 @@ workflow than a composite type.
 class _CompositeValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
     def __init__(self):
         super().__init__('composite-validate-fields-base-type-node',
-                         type_subclass=[pg_enum,
-                                        pg_builtin,
-                                        pg_composite],
+                         type_subclass=[pg_enum, pg_builtin, pg_composite],
                          type_instance=[pg_builtin])
 
 
@@ -65,13 +67,13 @@ class _CompositeValidateSingleInheritedClassNode(CommonValidateSingleInheritedCl
 class _CompositeValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-restricted-metadata-types-node',
-                         [pg_comment])
+                         types=[pg_comment])
 
 
 class _CompositeValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-unique-metadata-types-node',
-                         [pg_comment])
+                         types=[pg_comment])
 
 
 class _CompositeDependsOnValidationNodes:
@@ -136,7 +138,7 @@ class _CompositeDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNod
 class _CompositeDomainValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-domain-validate-restricted-metadata-types-node',
-                         [pg_check])
+                         types=[pg_check])
 
 
 class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
@@ -159,11 +161,17 @@ class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
                 raise FlowNodeException(self.name, [f'Composite domain attribute type must match type in parent definition. Expected {target.model_fields[name].annotation} to be {field_in_parent.annotation}'])
 
 
+class _CompositeDomainValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
+    def __init__(self):
+        super().__init__('composite-domain-validate-same-type-meta-instances-have-different-names-node',
+                         types=[pg_check])
+
 class _CompositeDomainDependsOnValidationNodes:
     def get_dependencies(self) -> tuple[str]:
         return ('composite-validate-fields-base-type-node'
                 'composite-validate-single-inherited-class-node',
                 'composite-domain-validate-declared-attributes-node',
+                'composite-domain-validate-same-type-meta-instances-have-different-names-node',
                 'composite-domain-validate-unique-metadata-types-node',
                 'composite-domain-validate-declared-attributes-node')
 
@@ -186,27 +194,15 @@ class _CompositeDomainExtractAttributesDefinitionNode(SingleChoiceDefinitionFlow
         accumulator.add_definition('attributes', attributes)
 
 
-class _CompositeDomainExtractCheckConstraint(SingleChoiceDefinitionFlowNode, _CompositeDomainDependsOnValidationNodes):
-    """
-    Validate composite attributes, there's two  scenarios according to the base class:
-    1. direct inheritance from pg_composite: it can declare any set of attributes
-    2. inheritance from a pg_composite subclass: declared type can only override 
-    base class attributes. it cannot declare additional fields.
-    """
-
+class _CompositeDomainExtractCheckConstraintNode(ModelExtractCheckConstraintsNode):
     def __init__(self):
-        super().__init__('composite-domain-extract-check-constraint-node')
+        super().__init__('composite-domain-extract-check-constraints-node',
+                         OperandDefinitionContext.COMPOSITE_DOMAIN)
 
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        final_predicate: LogicOperand = None
-        for name, instance in extract_by_instance_type_from_model_fields_info(target, pg_check):
-            instance.name = f'{target.__name__}_{instance.name}'
-            instance.predicate.propagate_definition(target.model_fields[name].annotation, name)
-            final_predicate = instance.predicate if final_predicate is None else final_predicate & instance.predicate
-        if final_predicate is not None:
-            accumulator.add_definition('check_constraint',
-                                       pg_check(name=f'{target.__name__}_field_constraints',
-                                                predicate=final_predicate))
+
+class _CompositeDomainDiscardMetaInstancesFromInheritedFieldsNode(ModelDiscardMetaInstancesFromInheritedFieldsNode, _CompositeDependsOnValidationNodes):
+    def __init__(self):
+        super().__init__('composite-domain-discard-meta-instances-from-inherited-fields-node')
 
 
 class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
@@ -218,25 +214,27 @@ class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         super().__init__('composite-domain-store-final-definition-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        definition: dict[str, str] = dict()
+        definition: dict[str, Any] = dict()
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
         definition['attributes'] = accumulator.get_definition('attributes', 'extraction')
-        definition['check'] = accumulator.get_definition('check_constraint', 'extraction')
+        definition['check'] = accumulator.get_definition('check_constraints', 'extraction')
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('composite-domain-extract-attributes-node', )
+        return ('composite-domain-extract-attributes-node',
+				'composite-domain-discard-meta-instances-from-inherited-fields-node',
+                'composite-domain-extract-check-constraints-node' )
 
 
 composite_flow_builder\
     .at_work_path('validation')\
         .add_node(_CompositeValidateFieldsBaseTypeNode)\
         .add_node(_CompositeValidateSingleInheritedClassNode)\
-        .add_node(_CompositeDetermineIfTargetIsDomainNode).critical()\
+        .add_node(_CompositeDetermineIfTargetIsDomainNode)\
     .build_choice(_CompositeValidateRestrictedMetadataTypesNode)\
-        .add_node(_CompositeValidateUniqueMetadataTypesNode)\
+        .add_node(_CompositeValidateUniqueMetadataTypesNode).critical()\
         .at_work_path('extraction')\
             .add_node(_CompositeExtractAttributesDefinitionNode)\
         .at_work_path('')\
@@ -244,11 +242,12 @@ composite_flow_builder\
         .end_choice()\
     .build_choice(_CompositeDomainValidateRestrictedMetadataTypesNode)\
         .at_work_path('validation')\
-            .add_node(_CompositeDomainValidateRestrictedMetadataTypesNode)\
-            .add_node(_CompositeDomainValidateAttributesNode)\
+            .add_node(_CompositeDomainValidateAttributesNode).critical()\
+            .add_node(_CompositeDomainValidateSameTypeMetaInstancesHaveDifferentNamesNode)\
         .at_work_path('extraction')\
             .add_node(_CompositeDomainExtractAttributesDefinitionNode).critical()\
-            .add_node(_CompositeDomainExtractCheckConstraint)\
+            .add_node(_CompositeDomainExtractCheckConstraintNode)\
+            .add_node(_CompositeDomainDiscardMetaInstancesFromInheritedFieldsNode)\
         .at_work_path('')\
             .add_node(_CompositeDomainStoreFinalDefinitionNode).critical()\
             .end_choice()

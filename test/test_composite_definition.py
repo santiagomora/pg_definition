@@ -30,6 +30,8 @@ from datetime import\
     time,\
     date
 
+# TODO: test that pg_checks are not inherited and neither do pg_comments when defining a domains domain
+
 
 def test_composite_definition_is_correctly_formed() -> None:
     class test(pg_composite):
@@ -215,8 +217,8 @@ def test_composite_domain_subclass_check_constraint_correctly_formed() -> None:
     assert 'comment' in definition
     assert definition['comment'] is None
     assert definition['check'] is not None
-    assert str(definition['check']) == '((VALUE).field_1 >= 0)'
-    assert definition['check'].name == 'domain1_field_constraints'
+    assert str(definition['check']['domain1_field1_greater_than_0']) == '((VALUE).field_1 >= 0)'
+    assert definition['check']['domain1_field1_greater_than_0'].name == 'domain1_field1_greater_than_0'
 
 
 def test_composite_domain_subclass_merges_check_constraints() -> None:

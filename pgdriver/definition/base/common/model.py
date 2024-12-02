@@ -7,12 +7,18 @@ from .flow import\
 from pydantic import\
     BaseModel,\
     ConfigDict
+from .meta import\
+    pg_check,\
+    OperandDefinitionContext
 from pydantic.fields import\
     FieldInfo
 from ...inspection import\
     get_field_classified_metadata_appearances,\
     extract_definition_fields,\
-    extract_type
+    extract_type,\
+    key_by,\
+    extract_inherited_fields,\
+    extract_by_instance_type_from_model_fields_info
 from typing import\
     Any
 
@@ -57,9 +63,9 @@ class ModelValidateRestrictedMetadataTypesNode(SingleChoiceDefinitionFlowNode):
     Metadata in fields are restricted to the passed instances
     """
 
-    def __init__(self, name: str, restricted: list[type]):
+    def __init__(self, name: str, *, types: list[type]):
         super().__init__(name)
-        self._restricted = restricted
+        self._restricted = types
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
@@ -77,9 +83,9 @@ class ModelValidateUniqueMetadataTypesNode(SingleChoiceDefinitionFlowNode):
     Types received must appear once in field metadata
     """
 
-    def __init__(self, name: str, unique: list[type]):
+    def __init__(self, name: str, *, types: list[type]):
         super().__init__(name)
-        self._unique = unique
+        self._unique = types
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
@@ -130,3 +136,56 @@ class ModelValidateFieldsBaseTypeNode(SingleChoiceDefinitionFlowNode):
                 errors.append(f'Field {name} type must be an instance of {super_classes_str}')
         if len(errors) > 0:
             raise FlowNodeException(self.name, errors)
+
+
+class ModelDiscardMetaInstancesFromInheritedFieldsNode(SingleChoiceDefinitionFlowNode):
+    """
+    All inherited metadata gets discarded. Initially it was planned to keep checks and default values, but as parent validation gets applied when creating an instance, this is not necessary.
+    Postgres itself will be in charge to add all parent check constraints by itself when declaring the inheritance over the child class.
+    """
+
+    def __init__(self, name: str):
+        super().__init__(name)
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        for field, info in extract_inherited_fields(target):
+            target.model_fields[field].metadata = []
+        target.model_rebuild(force=True)
+
+
+class ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode(SingleChoiceDefinitionFlowNode):
+    def __init__(self, name: str, *, types: tuple[type, ...]):
+        super().__init__(name)
+        self._types = types
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        name_count: dict[str, int] = {}
+        errors: list[str] = []
+        for tp in self._types:
+            for field_name, instance in extract_by_instance_type_from_model_fields_info(target, tp):
+                abs_name: str = f'{field_name}.{instance.name}.{tp.__name__}'
+                name_count[abs_name] = name_count.get(abs_name, 0) + 1
+        for name in name_count:
+            if name_count[name] > 1:
+                field_name, instance_name, tp_name = name.split('.')
+                # this means there is two instances of same type that share name
+                errors.append(f'Metadata definition error in {field_name}: found {name_count[name]} repeated instances of same type {tp_name} sharing name {instance_name}.')
+        if len(errors) > 0:
+            raise FlowNodeException(self.name, errors)
+
+
+class ModelExtractCheckConstraintsNode(SingleChoiceDefinitionFlowNode):
+    def __init__(self, name: str, context: OperandDefinitionContext):
+        super().__init__(name)
+        self._context = context
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        checks: dict[str, pg_check] = {}
+        for field, check in extract_by_instance_type_from_model_fields_info(target, pg_check):
+            check.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
+            check.name = f'{target.__name__}_{check.name}'
+            if check.name not in checks:
+                checks[check.name] = check
+            else:
+                checks[check.name].predicate = checks[check.name].predicate & check.predicate
+        accumulator.add_definition('check_constraints', checks if checks != {} else None)
