@@ -1,7 +1,6 @@
 from pgdriver.definition.build import\
     pg_smallint,\
     pg_text,\
-    pg_float,\
     pg_composite,\
     pg_datetime,\
     pg_time,\
@@ -29,6 +28,7 @@ from datetime import\
     datetime,\
     time,\
     date
+
 
 # TODO: test that pg_checks are not inherited and neither do pg_comments when defining a domains domain
 

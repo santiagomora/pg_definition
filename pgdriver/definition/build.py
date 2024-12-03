@@ -62,7 +62,6 @@ def with_pg_default_value(*args, **kwargs):
         # esto va a cambiar, no se deberia poder acceder a la definicion directamente
         # __pg_definition deberia devolver una copia siempre
         # no puede usarse con pg_table o pg_composite
-        assert type(target) == pg_builtin or issubclass(target, pg_composite)
         assert hasattr(target.__bases__[0], '__pg_definition')
         definition = getattr(target, '__pg_definition')()
         assert definition['default_value'] is None
@@ -93,9 +92,9 @@ class with_pg_check:
         self._check: pg_check = pg_check(name=name, predicate=predicate)
 
     def __call__(self, target: type):
-        assert type(target) == pg_builtin
-        self._check.predicate.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
         definition = getattr(target, '__pg_definition')()
+        assert definition['check'] is None
+        self._check.predicate.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
         definition['check'] = self._check
         return target
 
