@@ -37,6 +37,8 @@ class _PGBaseModelMeta(type(BaseModel)):
             if issubclass(rettype, pg_table):
                 execute_definition_flow(rettype, pg_table_definition_flow_root)
             elif issubclass(rettype, pg_composite):
+                if len(clsbases) > 1:
+                    raise TypeError('Class doesnt allow multiple bases')
                 execute_definition_flow(rettype, pg_composite_definition_flow_root)
         except NameError:
             pass

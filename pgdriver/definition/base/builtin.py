@@ -15,8 +15,6 @@ from .common.flow import\
     execute_definition_flow
 from typing import \
     Optional
-from .common.node import\
-    CommonValidateSingleInheritedClassNode
 import numpy as np
 import warnings
 
@@ -28,6 +26,9 @@ builtin_builder = DefinitionFlowBuilder(_pg_builtin_definition_flow_root)
 class pg_builtin(type):
     def __new__(cls, clsname: str, clsbases: tuple[type],
                 clsdict: dict[str, Any], **kwargs) -> type:
+
+        if len(clsbases) > 1:
+            raise TypeError('Class doesnt allow multiple bases')
 
         def __new__(cls_, *args, **kwargs) -> Any:
             with warnings.catch_warnings(action="ignore"):
@@ -82,11 +83,6 @@ class pg_builtin(type):
         return ret_type
 
 
-class _BuiltinValidateSingleInheritedClassNode(CommonValidateSingleInheritedClassNode):
-    def __init__(self):
-        super().__init__('builtin-validate-single-inherited-class-node')
-
-
 class _BuiltinDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):
     def __init__(self):
         super().__init__(2, 'builtin-determine-if-target-is-domain-node')
@@ -128,8 +124,6 @@ class _BuiltinDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
 
 builtin_builder\
-    .at_work_path('validation')\
-        .add_node(_BuiltinValidateSingleInheritedClassNode)\
     .at_work_path('')\
         .add_node(_BuiltinDetermineIfTargetIsDomainNode).critical()\
     .build_choice(_BuiltinDomainStoreFinalDefinitionNode)\

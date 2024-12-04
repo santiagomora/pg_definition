@@ -108,7 +108,7 @@ class pg_default_sequence_nextval:
     seq: pg_sequence
 
     def __get_pydantic_core_schema__(self, source: type, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        base_seq: type = get_args(self.seq.__orig_bases__[0])[0]
+        base_seq: type = getattr(self.seq, '__pg_definition')()['base_type']
         errors: list[str] = []
         if is_optional(source):
             errors.append('Annotated type must not be optional')
@@ -124,8 +124,13 @@ class pg_default_sequence_nextval:
             field_name=handler.field_name)
 
     def validate(self, value: Any, info: ValidationInfo) -> Any:
-        if value is None:
-            raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
+        # if value is None:
+        #    raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
+        definition = getattr(self.seq, '__pg_definition')()
+        if definition['min_value'] is not None and definition['min_value'] > value:
+            raise ValueError('Value cant be less than sequence min value')
+        if definition['max_value'] is not None and definition['max_value'] < value:
+            raise ValueError('Value cant be greater than sequence max value')
         return value
 
 

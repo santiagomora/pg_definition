@@ -6,7 +6,8 @@ from .common.flow import\
     FlowEndException,\
     FlowNodeException,\
     DefinitionFlowNode,\
-    DefinitionFlowBuilder
+    DefinitionFlowBuilder,\
+    CommonDetermineIfTargetIsDomainNode
 from .common.model import\
     pg_composite_definition_flow_root,\
     pg_composite,\
@@ -16,9 +17,6 @@ from .common.model import\
     ModelDiscardMetaInstancesFromInheritedFieldsNode,\
     ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
     ModelExtractCheckConstraintsNode
-from .common.node import\
-    CommonValidateSingleInheritedClassNode,\
-    CommonDetermineIfTargetIsDomainNode
 from .builtin import\
     pg_builtin
 from .enums import\
@@ -57,11 +55,6 @@ class _CompositeValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
         super().__init__('composite-validate-fields-base-type-node',
                          type_subclass=[pg_enum, pg_builtin, pg_composite],
                          type_instance=[pg_builtin])
-
-
-class _CompositeValidateSingleInheritedClassNode(CommonValidateSingleInheritedClassNode):
-    def __init__(self):
-        super().__init__('composite-validate-single-inherited-class-node')
 
 
 class _CompositeValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
@@ -231,7 +224,6 @@ class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 composite_flow_builder\
     .at_work_path('validation')\
         .add_node(_CompositeValidateFieldsBaseTypeNode)\
-        .add_node(_CompositeValidateSingleInheritedClassNode)\
         .add_node(_CompositeDetermineIfTargetIsDomainNode)\
     .build_choice(_CompositeValidateRestrictedMetadataTypesNode)\
         .add_node(_CompositeValidateUniqueMetadataTypesNode).critical()\

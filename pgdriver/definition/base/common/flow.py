@@ -265,3 +265,20 @@ class DefinitionFlowBuilder:
             raise Exception('choice not started')
         self.parent.last_node.set_next(self.root_node)
         return self.parent
+
+
+class CommonDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):
+    """
+    Types can only inherit from base_class, if they inherit from a subclass of the 
+    base class, then they will be considered as domain. A definition in the accumulator
+    will be added accordingly
+    """
+
+    def __init__(self, name: str, base_class: type):
+        super().__init__(2, name)
+        self._base_class = base_class
+        self.is_domain: Optional[bool] = None
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        base_class: tuple[type] = target.__bases__[0]
+        self.is_domain = base_class is not self._base_class

@@ -79,13 +79,8 @@ def test_composite_flow_validates_single_inheritance() -> None:
     try:
         class test3(test1, test2):
             pass
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
-                                                         'composite-validate-single-inherited-class-node')
-        assert error is not None
-        assert str(error) == "Type <class 'test_composite_definition.\
-test_composite_flow_validates_single_inheritance.<locals>.test3'> \
-can only have one base class"
+    except TypeError as e:
+        assert str(e) == 'Class doesnt allow multiple bases'
 
 
 def test_composite_flow_detects_invalid_check_in_definition() -> None:

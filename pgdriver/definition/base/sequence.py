@@ -1,45 +1,73 @@
 from typing import\
-    Generic,\
-    get_args,\
-    TypeVar
+    Any,\
+    Optional
 from .common.flow import\
-    SingleChoiceDefinitionFlowNode,\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
-    DefinitionFlowBuilder
+    SingleChoiceDefinitionFlowNode,\
+    DefinitionFlowBuilder,\
+    FlowNodeException,\
+    execute_definition_flow
 from .builtin import\
     pg_bigint,\
     pg_smallint,\
-    pg_int
+    pg_int,\
+    pg_builtin
+
+
+__all__ = ['pg_bigint_sequence', 'pg_int_sequence', 'pg_smallint_sequence']
 
 
 _pg_sequence_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('sequence-definition-flow')
 sequence_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_pg_sequence_definition_flow_root)
 
 
-T = TypeVar('T', bound=int)
+class pg_sequence(pg_builtin):
+    def __new__(
+        cls, clsname: str, clsbases: tuple[type],
+        clsdict: dict[str, Any], **kwargs
+    ) -> type:
+        if len(clsbases) > 1:
+            raise TypeError('Class doesnt allow multiple bases')
+        try:
+            allowed_bases: tuple[type, ...] = (pg_bigint_sequence, pg_int_sequence, pg_smallint_sequence, )
+            if clsbases[0] not in allowed_bases:
+                raise TypeError(f'Class {clsname} must be a subclass of any of these classes {allowed_bases}')
+        except NameError:
+            pass
+        ret_type: type = super()\
+            .__new__(cls, clsname, clsbases, clsdict)
+        execute_definition_flow(ret_type, _pg_sequence_definition_flow_root)
+        return ret_type
 
 
-class pg_sequence(type, Generic[T]):
-    def __init_subclass__(cls, *args, **kwargs):
-        super().__init_subclass__(*args, **kwargs)
-        accumulator: FlowAccumulator = FlowAccumulator(cls)
-        _pg_sequence_definition_flow_root.execute(cls, accumulator)
-
-
-class _SequenceValidateTargetTypeNode(SingleChoiceDefinitionFlowNode):
-    """
-    target type must be an instance of pg_int, pg_bigint or pg_smallint
-    """
-
+class _SequenceValidateBaseClassesClassNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
-        super().__init__('validate-target-type-component')
+        super().__init__('sequence-validate-base-classes-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        pass
-        # if target is pg_bigint or target is pg_int or target is pg_smallint:
-        #     return
-        # raise FlowNodeException(self.name, [f'Target type {type} must be a pg_bigint, pg_int or a pg_smallint instance'])
+        base_cls_count: dict[type, int] = {}
+        for base_cls in target.mro():
+            base_cls_count[base_cls] = base_cls_count.get(base_cls, 0) + 1
+        appearance_count = sum([base_cls_count.get(tp, 0) for tp in (pg_int, pg_bigint, pg_smallint, )])
+        if appearance_count > 1:
+            raise FlowNodeException(f'Sequence cant inherit from more than one {pg_int}, {pg_bigint} or {pg_smallint}')
+
+
+class _SequenceExtractBaseTypeNode(SingleChoiceDefinitionFlowNode):
+    def __init__(self):
+        super().__init__('sequence-extract-base-type-node')
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        extracted: Optional[type] = None
+        for base_cls in target.mro():
+            if base_cls in (pg_int, pg_bigint, pg_smallint, ):
+                extracted = base_cls
+                break
+        accumulator.add_definition('base_type', extracted)
+
+    def get_dependencies(self) -> tuple[str]:
+        return ('sequence-validate-base-classes-node', )
 
 
 class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
@@ -48,79 +76,38 @@ class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     """
 
     def __init__(self):
-        super().__init__('store-final-definition-component')
+        super().__init__('sequence-store-final-definition-component')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        accumulator.add_definition('final', {})
+        definition: dict[str, Any] = dict()
+        definition['base_type'] = accumulator.get_definition('base_type', 'extraction')
+        definition['comment'] = None
+        definition['min_value'] = None
+        definition['max_value'] = None
+        definition['increment'] = None
+        definition['cycle'] = None
+        accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('validate-target-type-component', )
-
-
-T = TypeVar('T')
-
-
-class with_pg_max_value(Generic[T]):
-    def __init__(self, max_value: T):
-        self._max_value = max_value
-
-    def __call__(self, wrapped_cls) -> type:
-        if not isinstance(wrapped_cls, pg_sequence):
-            raise Exception('Decorated class must be a sequence')
-        wrapped_cls_base: type = wrapped_cls.__bases__[0]
-        type_arg: type = get_args(self.__orig_class__)[0]
-        if wrapped_cls_base is not type_arg:
-            raise Exception(f'Class {wrapped_cls} base class must match with {type(type_arg)}')
-
-        @classmethod
-        def __pg_max_value(cls) -> T:
-            return self._max_value
-        bases: tuple[type] = wrapped_cls.__bases__
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_max_value': __pg_max_value})
-
-
-class with_pg_min_value(Generic[T]):
-    def __init__(self, min_value: T):
-        self._min_value = min_value
-
-    def __call__(self, wrapped_cls) -> type:
-        if not isinstance(wrapped_cls, pg_sequence):
-            raise Exception('Decorated class must be a sequence')
-        wrapped_cls_base: type = wrapped_cls.__bases__[0]
-        type_arg: type = get_args(self.__orig_class__)[0]
-        if wrapped_cls_base is not type_arg:
-            raise Exception(f'Class {wrapped_cls} base class must match with {type(type_arg)}')
-
-        @classmethod
-        def __pg_min_value(cls) -> T:
-            return self._max_value
-        bases: tuple[type] = wrapped_cls.__bases__
-
-        return type(wrapped_cls.__name__, bases, dict(wrapped_cls.__dict__) | {
-            '__pg_min_value': __pg_min_value})
+        return ('sequence-extract-base-type-node', )
 
 
 sequence_flow_builder\
     .at_work_path('validation')\
-        .add_node(_SequenceValidateTargetTypeNode)\
+        .add_node(_SequenceValidateBaseClassesClassNode)\
+    .at_work_path('extraction')\
+        .add_node(_SequenceExtractBaseTypeNode)\
     .at_work_path('')\
         .add_node(_SequenceStoreFinalDefinitionNode)
 
 
-class pg_bigint_sequence(pg_sequence[pg_bigint]):
+class pg_bigint_sequence(pg_bigint, metaclass=pg_sequence):
     pass
 
 
-class pg_int_sequence(pg_sequence[pg_int]):
+class pg_int_sequence(pg_int, metaclass=pg_sequence):
     pass
 
 
-class pg_smallint_sequence(pg_sequence[pg_smallint]):
+class pg_smallint_sequence(pg_smallint, metaclass=pg_sequence):
     pass
-
-
-__all__ = {
-    'with_pg_max_value': with_pg_max_value,
-    'with_pg_min_value': with_pg_min_value}

@@ -12,9 +12,7 @@ from .common.flow import\
     DefinitionFlowBuilder,\
     FlowEndException,\
     FlowNodeException,\
-    execute_definition_flow
-from .common.node import\
-    CommonValidateSingleInheritedClassNode,\
+    execute_definition_flow,\
     CommonDetermineIfTargetIsDomainNode
 
 
@@ -27,6 +25,9 @@ class pg_enum_builtin(EnumMeta):
         cls, clsname: str, clsbases: tuple[type],
         clsdict: dict[str, Any], **kwargs
     ) -> type:
+        if len(clsbases) > 1:
+            raise TypeError('Class doesnt allow multiple bases')
+
         try:
             if clsbases[0] != pg_enum:
                 # the class is a domain
@@ -46,11 +47,6 @@ class pg_enum_builtin(EnumMeta):
 
 class pg_enum(StrEnum, metaclass=pg_enum_builtin):
     pass
-
-
-class _EnumValidateSingleInheritedClassNode(CommonValidateSingleInheritedClassNode):
-    def __init__(self):
-        super().__init__('enum-validate-single-inherited-class-node')
 
 
 class _EnumDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNode):
@@ -91,8 +87,7 @@ class _EnumExtractMembersNode(SingleChoiceDefinitionFlowNode):
         accumulator.add_definition('members', members)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('enum-validate-members-node',
-                'enum-validate-single-inherited-class-node', )
+        return ('enum-validate-members-node', )
 
 
 class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
@@ -141,13 +136,11 @@ class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('enum-domain-validate-members-node',
-                'enum-validate-single-inherited-class-node', )
+        return ('enum-domain-validate-members-node', )
 
 
 enum_flow_builder\
     .at_work_path('validation')\
-        .add_node(_EnumValidateSingleInheritedClassNode)\
         .add_node(_EnumDetermineIfTargetIsDomainNode)\
         .build_choice(_EnumValidateMembersNode)\
             .at_work_path('extraction')\

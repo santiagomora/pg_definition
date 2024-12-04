@@ -10,7 +10,8 @@ from typing import\
 from .base.composite import\
     pg_composite
 from .base.table import\
-    pg_table
+    pg_table,\
+    pg_default_sequence_nextval
 from .base.enums import\
     pg_enum
 from .base.builtin import\
@@ -26,8 +27,7 @@ from .base.sequence import\
     pg_bigint_sequence,\
     pg_int_sequence,\
     pg_smallint_sequence,\
-    with_pg_max_value,\
-    with_pg_min_value
+    pg_sequence
 from .base.builtin import\
     pg_int,\
     pg_bigint,\
@@ -54,6 +54,14 @@ pg_check.type_compatibility.register(pg_text, str)
 pg_check.type_compatibility.register(pg_datetime, datetime)
 pg_check.type_compatibility.register(pg_boolean, bool)
 pg_check.type_compatibility.register(pg_composite, pg_composite)
+
+
+__all__ = ['pg_composite', 'pg_table', 'pg_enum', 'pg_int', 'pg_bigint', 'pg_smallint',
+           'pg_text', 'pg_double', 'pg_byte', 'pg_char', 'pg_datetime', 'pg_time', 'pg_date',
+           'pg_boolean', 'pg_bigint_sequence', 'pg_int_sequence', 'pg_default_value',
+           'pg_check', 'pg_comment', 'pg_smallint_sequence', 'with_pg_max_value',
+           'with_pg_default_value', 'with_pg_comment', 'with_pg_check', 'with_pg_min_value',
+           'pg_default_sequence_nextval', 'with_pg_increment']
 
 
 def with_pg_default_value(*args, **kwargs):
@@ -99,29 +107,43 @@ class with_pg_check:
         return target
 
 
-__all__ = {
-    'pg_composite':          pg_composite,
-    'pg_table':              pg_table,
-    'pg_enum':               pg_enum,
-    'pg_int':                pg_int,
-    'pg_bigint':             pg_bigint,
-    'pg_smallint':           pg_smallint,
-    'pg_text':               pg_text,
-    'pg_double':             pg_double,
-    'pg_byte':               pg_byte,
-    'pg_char':               pg_char,
-    'pg_datetime':           pg_datetime,
-    'pg_time':               pg_time,
-    'pg_date':               pg_date,
-    'pg_boolean':            pg_boolean,
-    'pg_bigint_sequence':    pg_bigint_sequence,
-    'pg_int_sequence':       pg_int_sequence,
-    'pg_default_value':      pg_default_value,
-    'pg_check':              pg_check,
-    'pg_comment':            pg_comment,
-    'pg_smallint_sequence':  pg_smallint_sequence,
-    'with_pg_max_value':     with_pg_max_value,
-    'with_pg_default_value': with_pg_default_value,
-    'with_pg_comment':       with_pg_comment,
-    'with_pg_check':         with_pg_check,
-    'with_pg_min_value':     with_pg_min_value}
+class with_pg_max_value:
+    def __init__(self, max_value: int):
+        self._max_value = max_value
+
+    def __call__(self, wrapped) -> type:
+        if not isinstance(wrapped, pg_sequence):
+            raise TypeError('Decorated class must be a pg_sequence subclass')
+        definition = getattr(wrapped, '__pg_definition')()
+        assert 'max_value' in definition
+        assert definition['max_value'] is None
+        definition['max_value'] = wrapped(self._max_value)
+        return wrapped
+
+
+class with_pg_min_value:
+    def __init__(self, min_value: int):
+        self._min_value = min_value
+
+    def __call__(self, wrapped) -> type:
+        if not isinstance(wrapped, pg_sequence):
+            raise TypeError('Decorated class must be a pg_sequence subclass')
+        definition = getattr(wrapped, '__pg_definition')()
+        assert 'min_value' in definition
+        assert definition['min_value'] is None
+        definition['min_value'] = wrapped(self._min_value)
+        return wrapped
+
+
+class with_pg_increment:
+    def __init__(self, increment: int):
+        self._increment = increment
+
+    def __call__(self, wrapped) -> type:
+        if not isinstance(wrapped, pg_sequence):
+            raise TypeError('Decorated class must be a pg_sequence subclass')
+        definition = getattr(wrapped, '__pg_definition')()
+        assert 'increment' in definition
+        assert definition['increment'] is None
+        definition['increment'] = wrapped(self._increment)
+        return wrapped
