@@ -1,48 +1,44 @@
-from pgdriver.definition.build import\
-    pg_smallint,\
-    pg_text,\
-    pg_composite,\
-    pg_datetime,\
-    pg_time,\
-    pg_date,\
-    with_pg_comment,\
-    pg_comment,\
-    pg_check,\
-    with_pg_default_value,\
-    with_pg_check,\
-    pg_default_value
-from typing_extensions import\
-    Annotated
-from pgdriver.definition.base.common.meta import\
+from pgdriver import\
+    smallint,\
+    text,\
+    composite,\
+    timestamp,\
+    time,\
+    date,\
+    with_comment,\
+    comment,\
+    check,\
+    with_default_value,\
+    with_check,\
+    default_value,\
+    FlowEndException,\
+    FlowNodeException,\
     literal,\
     field,\
-    this
-from pgdriver.definition.base.common.flow import\
-    FlowEndException,\
-    FlowNodeException
+    this,\
+    builtin
+from typing_extensions import\
+    Annotated
 from typing import\
     Optional
 import numpy as np
 import pydantic_core
-from datetime import\
-    datetime,\
-    time,\
-    date
+import datetime
 
 
-# TODO: test that pg_checks are not inherited and neither do pg_comments when defining a domains domain
+# TODO: test that checks are not inherited and neither do comments when defining a domains domain
 
 
 def test_composite_definition_is_correctly_formed() -> None:
-    class test(pg_composite):
-        field_1: pg_smallint
-        field_2: pg_text
+    class test(composite):
+        field_1: smallint
+        field_2: text
 
     assert hasattr(test, '__pg_definition')
     definition: dict[str, str] = getattr(test, '__pg_definition')()
     assert 'attributes' in definition
     assert len(definition['attributes']) == 2
-    attrs: dict[str, type] = {'field_1': pg_smallint, 'field_2': pg_text}
+    attrs: dict[str, type] = {'field_1': smallint, 'field_2': text}
     assert definition['comment'] is None
     for name, attr in definition['attributes'].items():
         assert 'name' in attr
@@ -58,7 +54,7 @@ def test_composite_definition_is_correctly_formed() -> None:
 
 def test_composite_flow_detects_non_existing_attribute() -> None:
     try:
-        class test(pg_composite):
+        class test(composite):
             pass
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
@@ -70,66 +66,64 @@ declare attributes."
 
 
 def test_composite_flow_validates_single_inheritance() -> None:
-    class test1(pg_composite):
-        field_1: pg_smallint
+    class test1(composite):
+        field_1: smallint
 
-    class test2(pg_composite):
-        field_2: pg_text
+    class test2(composite):
+        field_2: text
 
     try:
         class test3(test1, test2):
             pass
     except TypeError as e:
-        assert str(e) == 'Class doesnt allow multiple bases'
+        assert str(e) == "Class <class 'pgdriver.definition.common.model._PGBaseModelMeta'> doesnt allow multiple bases"
 
 
 def test_composite_flow_detects_invalid_check_in_definition() -> None:
     try:
-        class test(pg_composite):
-            field_1: Annotated[pg_smallint,
-                               pg_check(name='domain_greater_than_0',
+        class test(composite):
+            field_1: Annotated[smallint,
+                               check(name='domain_greater_than_0',
                                         predicate=this() >= literal(0))]
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
         assert error is not None
-        assert str(error) == "Invalid metadata type \
-<class 'pgdriver.definition.base.common.meta.pg_check'> \
-in field_1 declaration"
+        assert str(error) == f'Invalid metadata type {check} in field_1 declaration'
 
 
 def test_composite_flow_detects_invalid_attribute_type() -> None:
     try:
-        class test(pg_composite):
+        class test(composite):
             field_1: int
             field_2: str
             field_3: float
             field_4: bytes
-            field_5: datetime
-            field_6: time
-            field_7: date
+            field_5: datetime.datetime
+            field_6: datetime.time
+            field_7: datetime.date
             field_8: bool
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-fields-base-type-node')
         assert error is not None
         field_errors: list[str] = [
-            "Field field_3 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_2 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_6 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_7 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_5 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_4 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_1 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>",
-            "Field field_8 type must be a subclass of <class 'pgdriver.definition.base.builtin.pg_builtin'>"]
+            f'Field field_3 type must be a subclass of {builtin}',
+            f'Field field_2 type must be a subclass of {builtin}',
+            f'Field field_6 type must be a subclass of {builtin}',
+            f'Field field_7 type must be a subclass of {builtin}',
+            f'Field field_5 type must be a subclass of {builtin}',
+            f'Field field_4 type must be a subclass of {builtin}',
+            f'Field field_1 type must be a subclass of {builtin}',
+            f'Field field_8 type must be a subclass of {builtin}']
         for err in field_errors:
             assert err in error.error_list
 
 
 def test_composite_flow_extracts_attribute_comment() -> None:
-    class test(pg_composite):
-        field_1: Annotated[pg_smallint,
-                           pg_comment('test comment')]
+    class test(composite):
+        field_1: Annotated[smallint,
+                           comment('test comment')]
     assert hasattr(test, '__pg_definition')
     definition: dict[str, str] = getattr(test, '__pg_definition')()
     assert 'attributes' in definition
@@ -139,9 +133,9 @@ def test_composite_flow_extracts_attribute_comment() -> None:
 
 
 def test_composite_flow_extracts_comment() -> None:
-    @with_pg_comment('test comment')
-    class test(pg_composite):
-        field_1: pg_smallint
+    @with_comment('test comment')
+    class test(composite):
+        field_1: smallint
     assert hasattr(test, '__pg_definition')
     definition: dict[str, str] = getattr(test, '__pg_definition')()
     assert 'comment' in definition
@@ -149,8 +143,8 @@ def test_composite_flow_extracts_comment() -> None:
 
 
 def test_composite_domain_definition_is_correctly_formed() -> None:
-    class test(pg_composite):
-        field_1: pg_smallint
+    class test(composite):
+        field_1: smallint
 
     class domain1(test):
         pass
@@ -166,11 +160,11 @@ def test_composite_domain_definition_is_correctly_formed() -> None:
 
 def test_composite_domain_definition_flow_doesnt_allow_additional_fields() -> None:
     try:
-        class test(pg_composite):
-            field_1: pg_smallint
+        class test(composite):
+            field_1: smallint
 
         class domain1(test):
-            field_2: pg_text
+            field_2: text
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-declared-attributes-node')
@@ -180,27 +174,27 @@ def test_composite_domain_definition_flow_doesnt_allow_additional_fields() -> No
 
 def test_composite_domain_definition_flow_doesnt_allow_field_type_change() -> None:
     try:
-        class test(pg_composite):
-            field_1: pg_smallint
+        class test(composite):
+            field_1: smallint
 
         class domain1(test):
-            field_1: pg_text
+            field_1: text
 
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-declared-attributes-node')
         assert error is not None
-        assert str(error) == "Composite domain attribute type must match type in parent definition. Expected <class 'pgdriver.definition.base.builtin.pg_text'> to be <class 'pgdriver.definition.base.builtin.pg_smallint'>"
+        assert str(error) == f'Composite domain attribute type must match type in parent definition. Expected {text} to be {smallint}'
 
 
 def test_composite_domain_subclass_check_constraint_correctly_formed() -> None:
-    class test(pg_composite):
-        field_1: pg_smallint
+    class test(composite):
+        field_1: smallint
 
     class domain1(test):
-        field_1: Annotated[pg_smallint,
-                           pg_check(name='field1_greater_than_0',
+        field_1: Annotated[smallint,
+                           check(name='field1_greater_than_0',
                                     predicate=this() >= literal(0))]
 
     assert hasattr(domain1, '__pg_definition')
@@ -217,17 +211,17 @@ def test_composite_domain_subclass_check_constraint_correctly_formed() -> None:
 
 
 def test_composite_domain_subclass_merges_check_constraints() -> None:
-    class test(pg_composite):
-        field_1: pg_smallint
+    class test(composite):
+        field_1: smallint
 
     class domain1(test):
-        field_1: Annotated[pg_smallint,
-                           pg_check(name='field1_greater_than_0',
+        field_1: Annotated[smallint,
+                           check(name='field1_greater_than_0',
                                     predicate=this() >= literal(0))]
 
     class domain2(domain1):
-        field_1: Annotated[pg_smallint,
-                           pg_check(name='field1_less_than_10',
+        field_1: Annotated[smallint,
+                           check(name='field1_less_than_10',
                                     predicate=this() <= literal(10))]
 
     class domain3(domain2):
@@ -271,9 +265,9 @@ field_1\n\
 
 def test_composite_domain_subclass_doesnt_inherit_comments() -> None:
     try:
-        class test(pg_composite):
-            field_1: Annotated[pg_smallint,
-                               pg_comment('test')]
+        class test(composite):
+            field_1: Annotated[smallint,
+                               comment('test')]
 
         class domain1(test):
             pass
@@ -282,13 +276,13 @@ def test_composite_domain_subclass_doesnt_inherit_comments() -> None:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-restricted-metadata-types-node')
         assert error is not None
-        if str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_comment'> in field_1 declaration":
+        if str(error) == "Invalid metadata type <class 'pgdriver.definition.definition.meta.comment'> in field_1 declaration":
             assert False
 
-    @with_pg_comment('test comment')
-    class test2(pg_composite):
-        field_1: Annotated[pg_smallint,
-                           pg_comment('test')]
+    @with_comment('test comment')
+    class test2(composite):
+        field_1: Annotated[smallint,
+                           comment('test')]
 
     class domain2(test2):
         pass
@@ -300,35 +294,35 @@ def test_composite_domain_subclass_doesnt_inherit_comments() -> None:
 
 def test_composite_flow_detects_invalid_metadata() -> None:
     try:
-        class test(pg_composite):
-            field_1: pg_smallint
+        class test(composite):
+            field_1: smallint
 
         class domain1(test):
-            field_1: Annotated[pg_smallint,
-                               pg_comment('test')]
+            field_1: Annotated[smallint,
+                               comment('test')]
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-restricted-metadata-types-node')
         assert error is not None
-        assert str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_comment'> in field_1 declaration"
+        assert str(error) == f'Invalid metadata type {comment} in field_1 declaration'
     try:
-        # class test2(pg_composite):
-            field_1: Annotated[pg_smallint,
-                               pg_check(name='field1_greater_than_0',
+        # class test2(composite):
+            field_1: Annotated[smallint,
+                               check(name='field1_greater_than_0',
                                         predicate=this() >= literal(0))]
 
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
         assert error is not None
-        assert str(error) == "Invalid metadata type <class 'pgdriver.definition.base.common.meta.pg_check'> in field_1 declaration"
+        assert str(error) == "Invalid metadata type <class 'pgdriver.definition.definition.meta.check'> in field_1 declaration"
 
 
 def test_composite_support_complex_type_creation() -> None:
-    class domain0(pg_smallint):
+    class domain0(smallint):
         pass
 
-    @with_pg_default_value(2)
+    @with_default_value(2)
     class domain1(domain0):
         pass
 
@@ -336,51 +330,51 @@ def test_composite_support_complex_type_creation() -> None:
     definition: dict[str, str] = getattr(domain1, '__pg_definition')()
     assert 'default_value' in definition
     assert definition['default_value'] is not None
-    assert isinstance(definition['default_value'], pg_default_value)
+    assert isinstance(definition['default_value'], default_value)
     assert isinstance(definition['default_value'].default, literal)
     assert isinstance(definition['default_value'].default._lit, domain1)
     assert definition['default_value'].default._lit == 2
 
-    class test1(pg_composite):
-        f1: pg_smallint
-        f2: pg_datetime
-        f3: pg_time
-        f4: pg_date
+    class test1(composite):
+        f1: smallint
+        f2: timestamp
+        f3: time
+        f4: date
 
-    class test2(pg_composite):
+    class test2(composite):
         f1: test1
-        f2: pg_smallint
+        f2: smallint
 
     d = test2(f1={'f1': 1, 'f2': ('2020-10-11', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
-    assert isinstance(d.f1.f1, pg_smallint)
+    assert isinstance(d.f1.f1, smallint)
     assert isinstance(d.f1.f2, np.datetime64)
     assert isinstance(d.f1.f3, np.datetime64)
     assert isinstance(d.f1.f4, np.datetime64)
-    assert isinstance(d.f2, pg_smallint)
+    assert isinstance(d.f2, smallint)
 
-    @with_pg_check(name='constrained_datetime_check', predicate=this() > literal('2020-10-10'))
-    class constrained_datetime(pg_datetime):
+    @with_check(name='constrained_datetime_check', predicate=this() > literal('2020-10-10'))
+    class constrained_datetime(timestamp):
         pass
 
-    class constrained_date(pg_date):
+    class constrained_date(date):
         pass
 
-    class test3(pg_composite):
-        f1: pg_smallint
+    class test3(composite):
+        f1: smallint
         f2: constrained_datetime
-        f3: pg_time
+        f3: time
         f4: constrained_date
 
-    class test4(pg_composite):
+    class test4(composite):
         f1: test3
-        f2: pg_smallint
+        f2: smallint
 
     d = test4(f1={'f1': 1, 'f2': ('2020-10-11', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
-    assert isinstance(d.f1.f1, pg_smallint)
+    assert isinstance(d.f1.f1, smallint)
     assert isinstance(d.f1.f2, np.datetime64)
     assert isinstance(d.f1.f3, np.datetime64)
     assert isinstance(d.f1.f4, np.datetime64)
-    assert isinstance(d.f2, pg_smallint)
+    assert isinstance(d.f2, smallint)
 
     try:
         d = test4(f1={'f1': 1, 'f2': ('2020-10-09', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
@@ -392,12 +386,12 @@ f1.f2\n\
 
 
 def test_composite_misc_check_tests() -> None:
-    class test(pg_composite):
-        f1: pg_smallint
-        f2: pg_smallint
+    class test(composite):
+        f1: smallint
+        f2: smallint
 
     class domain(test):
-        f2: Annotated[pg_smallint, pg_check(name='f2_gt_f1', predicate=this() > field('f1'))]
+        f2: Annotated[smallint, check(name='f2_gt_f1', predicate=this() > field('f1'))]
 
     try:
         domain(f1=2, f2=1)

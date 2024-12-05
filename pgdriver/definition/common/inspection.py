@@ -18,7 +18,8 @@ from pydantic import\
     BaseModel
 from deepdiff import \
     DeepDiff
-from typing import Iterable
+from typing import\
+    Iterable
 
 
 # TODO esto deberia ir en su propio archivo porque esta creciendo bastante

@@ -1,4 +1,4 @@
-from pgdriver.definition.base.common.meta import\
+from pgdriver import\
     literal,\
     this,\
     field,\

@@ -1,45 +1,40 @@
-from pgdriver.definition.build import\
-    pg_smallint,\
-    pg_text,\
-    pg_table,\
-    pg_int,\
-    with_pg_comment,\
-    pg_comment,\
-    pg_check,\
-    pg_default_value
+from pgdriver import\
+    smallint,\
+    text,\
+    table,\
+    integer,\
+    with_comment,\
+    comment,\
+    check,\
+    default_value,\
+    table_index,\
+    table_unique_index,\
+    table_primary_key,\
+    table_foreign_key,\
+    default_nextval,\
+    literal,\
+    smallint_sequence,\
+    this,\
+    FlowEndException,\
+    FlowNodeException,\
+    table_index_type,\
+    table_foreign_key_action
 from typing_extensions import\
     Annotated
-from pgdriver.definition.base.common.meta import\
-    literal,\
-    this
-from pgdriver.definition.base.sequence import\
-    pg_smallint_sequence
-from pgdriver.definition.base.table import\
-    pg_table_index,\
-    pg_table_unique_index,\
-    pg_table_primary_key,\
-    pg_table_foreign_key,\
-    pg_default_sequence_nextval
-from pgdriver.definition.base.common.flow import\
-    FlowEndException,\
-    FlowNodeException
 from typing import\
     Optional,\
     Any
 from dataclasses import\
     dataclass
-from pgdriver.definition.inspection import\
+from pgdriver.definition.common.inspection import\
     extract_first_instance_from_field_metadata
-from pgdriver.definition.extraction.base import\
-    pg_table_index_type,\
-    pg_table_foreign_key_action
 
 
 def test_table_definition_is_correctly_formed() -> None:
 
-    class test(pg_table):
-        field_1: pg_smallint
-        field_2: pg_text
+    class test(table):
+        field_1: smallint
+        field_2: text
 
     assert hasattr(test, '__pg_definition')
     definition: dict[str, Any] = test.__pg_definition()
@@ -53,8 +48,8 @@ def test_table_definition_is_correctly_formed() -> None:
     assert any([col['name'] == 'field_1' for col in definition['columns']])
     assert any([col['name'] == 'field_2' for col in definition['columns']])
     assert all([col['comment'] is None for col in definition['columns']])
-    assert any([col['type'] == pg_text for col in definition['columns']])
-    assert any([col['type'] == pg_smallint for col in definition['columns']])
+    assert any([col['type'] == text for col in definition['columns']])
+    assert any([col['type'] == smallint for col in definition['columns']])
     assert 'primary_key' in definition
     assert definition['primary_key']  is None
     assert 'foreign_keys' in definition
@@ -62,10 +57,10 @@ def test_table_definition_is_correctly_formed() -> None:
     assert 'indexes' in definition
     assert definition['indexes']  is None
 
-    @with_pg_comment('test comment')
-    class test2(pg_table):
-        field_1: pg_smallint
-        field_2: Annotated[pg_text, pg_comment('field 2 test comment')]
+    @with_comment('test comment')
+    class test2(table):
+        field_1: smallint
+        field_2: Annotated[text, comment('field 2 test comment')]
 
     assert hasattr(test, '__pg_definition')
     definition: dict[str, Any] = test2.__pg_definition()
@@ -78,9 +73,9 @@ def test_table_definition_is_correctly_formed() -> None:
     assert 'columns' in definition
     assert any([col['name'] == 'field_1' for col in definition['columns']])
     assert any([col['name'] == 'field_2' for col in definition['columns']])
-    assert any([col['type'] == pg_text for col in definition['columns']])
-    assert any([col['type'] == pg_smallint for col in definition['columns']])
-    assert any([col['comment'] == pg_comment('field 2 test comment') for col in definition['columns']])
+    assert any([col['type'] == text for col in definition['columns']])
+    assert any([col['type'] == smallint for col in definition['columns']])
+    assert any([col['comment'] == comment('field 2 test comment') for col in definition['columns']])
     assert 'primary_key' in definition
     assert definition['primary_key']  is None
     assert 'foreign_keys' in definition
@@ -91,47 +86,47 @@ def test_table_definition_is_correctly_formed() -> None:
 
 def test_definition_flow_detects_inconsistent_base_classes_and_fields() -> None:
     try:
-        class test1(pg_table):
-            field_1: pg_smallint
-            field_2: pg_text
+        class test1(table):
+            field_1: smallint
+            field_2: text
 
-        class test2(pg_table, test1):
+        class test2(table, test1):
             pass
     except TypeError as e:
         assert str(e) == 'Cannot create a consistent method resolution\n\
-order (MRO) for bases pg_table, test1'
+order (MRO) for bases table, test1'
 
     try:
         class test1:
             pass
 
-        class test2(pg_table, test1):
-            field_1: pg_smallint
-            field_2: pg_text
+        class test2(table, test1):
+            field_1: smallint
+            field_2: text
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-consistent-base-classes-node')
         assert error is not None
-        assert str(error) == "Cant define <class 'pgdriver.definition.base.common.model.pg_table'> as base class if <class 'test_table_definition.test_definition_flow_detects_inconsistent_base_classes_and_fields.<locals>.test2'> is set to inherit more than one base class, Inherited class <class 'test_table_definition.test_definition_flow_detects_inconsistent_base_classes_and_fields.<locals>.test1'> must be a subclass of <class 'pgdriver.definition.base.common.model.pg_table'>"
+        assert str(error) == f'Cant define {table} as base class if <class \'test_table_definition.test_definition_flow_detects_inconsistent_base_classes_and_fields.<locals>.test2\'> is set to inherit more than one base class, Inherited class <class \'test_table_definition.test_definition_flow_detects_inconsistent_base_classes_and_fields.<locals>.test1\'> must be a subclass of {table}'
 
     try:
-        class test1(pg_table):
-            field_1: pg_smallint
+        class test1(table):
+            field_1: smallint
 
         class test2(test1):
-            field_1: pg_text
+            field_1: text
 
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-consistent-base-classes-node')
         assert error is not None
-        assert str(error) == "Field field_1 type conflict. Declared in multiple base classes: <class 'pgdriver.definition.base.builtin.pg_smallint'>, <class 'pgdriver.definition.base.builtin.pg_text'>" or \
-            str(error) == "Field field_1 type conflict. Declared in multiple base classes: <class 'pgdriver.definition.base.builtin.pg_text'>, <class 'pgdriver.definition.base.builtin.pg_smallint'>"
+        assert str(error) == f'Field field_1 type conflict. Declared in multiple base classes: {smallint}, {text}' or \
+            str(error) == f'Field field_1 type conflict. Declared in multiple base classes: {text}, {smallint}'
 
 
 def test_definition_flow_detects_empty_table_definition() -> None:
     try:
-        class test1(pg_table):
+        class test1(table):
             pass
 
     except FlowEndException as e:
@@ -141,76 +136,76 @@ def test_definition_flow_detects_empty_table_definition() -> None:
         assert str(error) == "Class <class 'test_table_definition.test_definition_flow_detects_empty_table_definition.<locals>.test1'> must define columns."
 
 
-# pg_table_index,\
-# pg_table_unique_index,\
-# pg_table_primary_key,\
-# pg_table_foreign_key,\
-# pg_default_sequence_nextval
+# table_index,\
+# table_unique_index,\
+# table_primary_key,\
+# table_foreign_key,\
+# default_nextval
 def test_definition_flow_detects_repeated_metadata_instances() -> None:
     try:
-        class test1(pg_table):
-            field: Annotated[pg_int, pg_table_primary_key(name='test'), pg_table_primary_key(name='test2')]
+        class test1(table):
+            field: Annotated[integer, table_primary_key(name='test'), table_primary_key(name='test2')]
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == "Metadata type <class 'pgdriver.definition.base.table.pg_table_primary_key'> can only appear once in field declaration"
+        assert str(error) == f'Metadata type {table_primary_key} can only appear once in field declaration'
 
     try:
-        class test1(pg_table):
-            field: Annotated[pg_int, pg_default_value(1), pg_default_value(2)]
+        class test1(table):
+            field: Annotated[integer, default_value(1), default_value(2)]
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == "Metadata type <class 'pgdriver.definition.base.common.meta.pg_default_value'> can only appear once in field declaration"
+        assert str(error) == f'Metadata type {default_value} can only appear once in field declaration'
 
     try:
-        class test_seq(pg_smallint_sequence):
+        class test_seq(smallint_sequence):
             pass
 
-        class test1(pg_table):
-            field: Annotated[pg_int, pg_default_sequence_nextval(seq=test_seq)]
+        class test1(table):
+            field: Annotated[integer, default_nextval(seq=test_seq)]
         assert False
     except TypeError as e:
         assert str(e) == 'Sequence type must match annotated type'
 
     try:
-        class test_seq(pg_smallint_sequence):
+        class test_seq(smallint_sequence):
             pass
 
-        class test1(pg_table):
-            field: Annotated[pg_smallint, pg_default_sequence_nextval(seq=test_seq), pg_default_sequence_nextval(seq=test_seq)]
+        class test1(table):
+            field: Annotated[smallint, default_nextval(seq=test_seq), default_nextval(seq=test_seq)]
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == "Metadata type <class 'pgdriver.definition.base.table.pg_default_sequence_nextval'> can only appear once in field declaration"
+        assert str(error) == f'Metadata type {default_nextval} can only appear once in field declaration'
 
     try:
-        class test1(pg_table):
-            field: Annotated[pg_smallint, pg_comment('test'), pg_comment('tes2')]
+        class test1(table):
+            field: Annotated[smallint, comment('test'), comment('tes2')]
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == "Metadata type <class 'pgdriver.definition.base.common.meta.pg_comment'> can only appear once in field declaration"
+        assert str(error) == f'Metadata type {comment} can only appear once in field declaration'
 
     try:
-        class test2(pg_table):
-            field1: Annotated[pg_smallint,
-                              pg_table_primary_key(name='test')]
+        class test2(table):
+            field1: Annotated[smallint,
+                              table_primary_key(name='test')]
 
-        class test1(pg_table):
-            field: Annotated[pg_smallint,
-                             pg_table_foreign_key(name='test',
+        class test1(table):
+            field: Annotated[smallint,
+                             table_foreign_key(name='test',
                                                   other_class=test2,
                                                   other_class_column_name='field1'),
-                             pg_table_foreign_key(name='test2',
+                             table_foreign_key(name='test2',
                                                   other_class=test2,
                                                   other_class_column_name='field1'),]
         assert False
@@ -218,44 +213,44 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == "Metadata type <class 'pgdriver.definition.base.table.pg_table_foreign_key'> can only appear once in field declaration"
+        assert str(error) == f'Metadata type {table_foreign_key} can only appear once in field declaration'
 
 def test_definition_flow_detects_mutually_exclusive_metadata_types() -> None:
     try:
-        class test_seq(pg_smallint_sequence):
+        class test_seq(smallint_sequence):
             pass
 
-        class test(pg_table):
-            field1: Annotated[pg_smallint,
-                              pg_default_value(2),
-                              pg_default_sequence_nextval(seq=test_seq)]
+        class test(table):
+            field1: Annotated[smallint,
+                              default_value(2),
+                              default_nextval(seq=test_seq)]
 
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-mutually-exclusive-metadata-node')
         assert error is not None
-        assert str(error) == "Field field1 described by two mutually exclusive metadata instances: pg_default_sequence_nextval(seq=<class 'test_table_definition.test_definition_flow_detects_mutually_exclusive_metadata_types.<locals>.test_seq'>) and pg_default_sequence_nextval(seq=<class 'test_table_definition.test_definition_flow_detects_mutually_exclusive_metadata_types.<locals>.test_seq'>)"
+        assert str(error) == f'Field field1 described by two mutually exclusive metadata instances: {default_nextval(seq=test_seq)} and {default_value(2)}'
 
 
 def test_definition_flow_detects_invalid_metadata_types() -> None:
     try:
-        class test2(pg_table):
-            field1: Annotated[pg_smallint,
-                              pg_table_primary_key(name='test')]
+        class test2(table):
+            field1: Annotated[smallint,
+                              table_primary_key(name='test')]
 
-        class test_seq(pg_smallint_sequence):
+        class test_seq(smallint_sequence):
             pass
 
-        class test1(pg_table):
-            field1: Annotated[pg_smallint,
-                              pg_check(name='test', predicate=this()>literal(0)),
-                              pg_default_sequence_nextval(seq=test_seq),
-                              pg_table_primary_key(name='test'),
-                              pg_comment('TEST'),
-                              pg_table_index(name='test'),
-                              pg_table_unique_index(name='test'),
-                              pg_table_foreign_key(name='test',
+        class test1(table):
+            field1: Annotated[smallint,
+                              check(name='test', predicate=this()>literal(0)),
+                              default_nextval(seq=test_seq),
+                              table_primary_key(name='test'),
+                              comment('TEST'),
+                              table_index(name='test'),
+                              table_unique_index(name='test'),
+                              table_foreign_key(name='test',
                                                    other_class=test2,
                                                    other_class_column_name='field1'),]
     except Exception as e:
@@ -267,8 +262,8 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
         class test2:
             field1: str
 
-        class test1(pg_table):
-            field1: Annotated[pg_smallint,
+        class test1(table):
+            field1: Annotated[smallint,
                               test2('test')]
         assert False
     except FlowEndException as e:
@@ -281,39 +276,39 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
 def test_foreign_key_definition_correctly_extracted() -> None:
     # NOTE test that referenced columns types are correctly validated
     try:
-        class test2(pg_table):
-            field1: Annotated[pg_int,
-                              pg_table_primary_key(name='test')]
+        class test2(table):
+            field1: Annotated[integer,
+                              table_primary_key(name='test')]
 
-        class test1(pg_table):
-            field: Annotated[pg_smallint,
-                             pg_table_foreign_key(name='test2',
+        class test1(table):
+            field: Annotated[smallint,
+                             table_foreign_key(name='test2',
                                                   other_class=test2,
                                                   other_class_column_name='field1')]
     except TypeError as e:
         assert str(e) == "Foreign key column field type must match with field1 in <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test2'> definition"
 
     try:
-        class test2(pg_table):
-            field3: Annotated[pg_int,
-                              pg_table_primary_key(name='test')]
+        class test2(table):
+            field3: Annotated[integer,
+                              table_primary_key(name='test')]
 
-        class test1(pg_table):
-            field: Annotated[pg_smallint,
-                             pg_table_foreign_key(name='test2',
+        class test1(table):
+            field: Annotated[smallint,
+                             table_foreign_key(name='test2',
                                                   other_class=test2,
                                                   other_class_column_name='field1')]
     except TypeError as e:
         assert str(e) == "Foreign key column field1 must exist in <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test2'> definition"
 
     # NOTE test that foreign keys are not inherited
-    class test1(pg_table):
-        field1: Annotated[pg_smallint,
-                          pg_table_primary_key(name='test')]
+    class test1(table):
+        field1: Annotated[smallint,
+                          table_primary_key(name='test')]
 
-    class test2(pg_table):
-        field: Annotated[pg_smallint,
-                         pg_table_foreign_key(name='test2',
+    class test2(table):
+        field: Annotated[smallint,
+                         table_foreign_key(name='test2',
                                               other_class=test1,
                                               other_class_column_name='field1')]
 
@@ -329,28 +324,28 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     assert def2['foreign_keys'][0]['other_class'] == test1
     assert set([f[1] for f in def2['foreign_keys'][0]['constrained_column_pairs']]) == set(('field1', ))
     assert set([f[0] for f in def2['foreign_keys'][0]['constrained_column_pairs']]) == set(('field', ))
-    assert def2['foreign_keys'][0]['on_update'] == pg_table_foreign_key_action.NO_ACTION
-    assert def2['foreign_keys'][0]['on_delete'] == pg_table_foreign_key_action.NO_ACTION
+    assert def2['foreign_keys'][0]['on_update'] == table_foreign_key_action.NO_ACTION
+    assert def2['foreign_keys'][0]['on_delete'] == table_foreign_key_action.NO_ACTION
     assert def2['foreign_keys'][0]['name'] == 'test2'
 
     assert def3['foreign_keys'] is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['field'], pg_table_foreign_key) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['field'], table_foreign_key) is None
 
     # NOTE test that final definition contains expected data
     # NOTE test that foreign keys are correctly grouped by name in final definition
-    class test4(pg_table):
-        t4_field1: Annotated[pg_smallint,
-                             pg_table_primary_key(name='test')]
-        t4_field2: Annotated[pg_text,
-                             pg_table_primary_key(name='test')]
+    class test4(table):
+        t4_field1: Annotated[smallint,
+                             table_primary_key(name='test')]
+        t4_field2: Annotated[text,
+                             table_primary_key(name='test')]
 
-    class test5(pg_table):
-        t5_field1: Annotated[pg_smallint,
-                             pg_table_foreign_key(name='test2',
+    class test5(table):
+        t5_field1: Annotated[smallint,
+                             table_foreign_key(name='test2',
                                                   other_class=test4,
                                                   other_class_column_name='t4_field1')]
-        t5_field2: Annotated[pg_text,
-                             pg_table_foreign_key(name='test2',
+        t5_field2: Annotated[text,
+                             table_foreign_key(name='test2',
                                                   other_class=test4,
                                                   other_class_column_name='t4_field2')]
 
@@ -358,24 +353,24 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     assert def5['foreign_keys'][0]['other_class'] == test4
     assert set([f[1] for f in def5['foreign_keys'][0]['constrained_column_pairs']]) == set(('t4_field1', 't4_field2'))
     assert set([f[0] for f in def5['foreign_keys'][0]['constrained_column_pairs']]) == set(('t5_field1', 't5_field2'))
-    assert def5['foreign_keys'][0]['on_update'] == pg_table_foreign_key_action.NO_ACTION
-    assert def5['foreign_keys'][0]['on_delete'] == pg_table_foreign_key_action.NO_ACTION
+    assert def5['foreign_keys'][0]['on_update'] == table_foreign_key_action.NO_ACTION
+    assert def5['foreign_keys'][0]['on_delete'] == table_foreign_key_action.NO_ACTION
     assert def5['foreign_keys'][0]['name'] == 'test2'
 
     # NOTE test that validates that all fields pointed by foreign keys participate in unique index or primary key
     try:
-        class test6(pg_table):
-            t6_field1: pg_smallint
-            t6_field2: Annotated[pg_text,
-                                 pg_table_primary_key(name='test')]
+        class test6(table):
+            t6_field1: smallint
+            t6_field2: Annotated[text,
+                                 table_primary_key(name='test')]
 
-        class test7(pg_table):
-            t7_field1: Annotated[pg_smallint,
-                                 pg_table_foreign_key(name='test2',
+        class test7(table):
+            t7_field1: Annotated[smallint,
+                                 table_foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field1')]
-            t7_field2: Annotated[pg_text,
-                                 pg_table_foreign_key(name='test2',
+            t7_field2: Annotated[text,
+                                 table_foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
@@ -388,17 +383,17 @@ def test_foreign_key_definition_correctly_extracted() -> None:
             "Foreign key test2 error: Other class <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'> must define any ('unique_indexes', 'primary_key') constraint over referenced columns {'t6_field2', 't6_field1'}"
 
     try:
-        class test6(pg_table):
-            t6_field1: pg_smallint
-            t6_field2: pg_text
+        class test6(table):
+            t6_field1: smallint
+            t6_field2: text
 
-        class test7(pg_table):
-            t7_field1: Annotated[pg_smallint,
-                                 pg_table_foreign_key(name='test2',
+        class test7(table):
+            t7_field1: Annotated[smallint,
+                                 table_foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field1')]
-            t7_field2: Annotated[pg_text,
-                                 pg_table_foreign_key(name='test2',
+            t7_field2: Annotated[text,
+                                 table_foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
@@ -410,18 +405,18 @@ def test_foreign_key_definition_correctly_extracted() -> None:
             "Foreign key test2 error: Other class <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'> must define any ('unique_indexes', 'primary_key') constraint over referenced columns {'t6_field2', 't6_field1'}"
 
     try:
-        class test6(pg_table):
-            t6_field1: Annotated[pg_smallint,
-                                 pg_table_primary_key(name='test')]
-            t6_field2: pg_text
+        class test6(table):
+            t6_field1: Annotated[smallint,
+                                 table_primary_key(name='test')]
+            t6_field2: text
 
-        class test7(pg_table):
-            t7_field1: Annotated[pg_smallint,
-                                 pg_table_foreign_key(name='test2',
+        class test7(table):
+            t7_field1: Annotated[smallint,
+                                 table_foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field1')]
-            t7_field2: Annotated[pg_text,
-                                 pg_table_foreign_key(name='test2',
+            t7_field2: Annotated[text,
+                                 table_foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
@@ -437,11 +432,11 @@ def test_foreign_key_definition_correctly_extracted() -> None:
 def test_primary_key_definition_correctly_extracted() -> None:
     # NOTE test that there can only be one primary key in the definition
     try:
-        class test1(pg_table):
-            t1_field1: Annotated[pg_smallint,
-                                 pg_table_primary_key(name='test')]
-            t1_field2: Annotated[pg_smallint,
-                                 pg_table_primary_key(name='test2')]
+        class test1(table):
+            t1_field1: Annotated[smallint,
+                                 table_primary_key(name='test')]
+            t1_field2: Annotated[smallint,
+                                 table_primary_key(name='test2')]
         assert False
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
@@ -450,11 +445,11 @@ def test_primary_key_definition_correctly_extracted() -> None:
         assert str(error) == "Multiple primary keys detected for class <class 'test_table_definition.test_primary_key_definition_correctly_extracted.<locals>.test1'>"
 
     # NOTE test that primary keys are not inherited
-    class test1(pg_table):
-        t1_field1: Annotated[pg_smallint,
-                             pg_table_primary_key(name='test')]
-        t1_field2: Annotated[pg_smallint,
-                             pg_table_primary_key(name='test')]
+    class test1(table):
+        t1_field1: Annotated[smallint,
+                             table_primary_key(name='test')]
+        t1_field2: Annotated[smallint,
+                             table_primary_key(name='test')]
 
     class test2(test1):
         pass
@@ -463,8 +458,8 @@ def test_primary_key_definition_correctly_extracted() -> None:
     def2 = getattr(test2, '__pg_definition')()
     assert 'primary_key' in def2
     assert def2['primary_key'] is None
-    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field1'], pg_table_primary_key) is None
-    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field2'], pg_table_primary_key) is None
+    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field1'], table_primary_key) is None
+    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field2'], table_primary_key) is None
 
     # NOTE test primary key is correctly grouped by name in final definition
     # NOTE test that primary key final definition is correct
@@ -477,27 +472,27 @@ def test_primary_key_definition_correctly_extracted() -> None:
 
 def test_index_definition_correctly_extracted() -> None:
     # NOTE test index is correctly grouped by name in final definition
-    class test1(pg_table):
-        t1_field1: Annotated[pg_smallint,
-                             pg_table_index(name='test')]
-        t1_field2: Annotated[pg_smallint,
-                             pg_table_index(name='test')]
+    class test1(table):
+        t1_field1: Annotated[smallint,
+                             table_index(name='test')]
+        t1_field2: Annotated[smallint,
+                             table_index(name='test')]
     assert hasattr(test1, '__pg_definition')
     def1 = getattr(test1, '__pg_definition')()
     assert 'indexes' in def1
     assert len(def1['indexes']) == 1
     assert def1['indexes'][0]['column_name'] == set(('t1_field2', 't1_field1'))
-    assert def1['indexes'][0]['type'] == pg_table_index_type.BTREE
+    assert def1['indexes'][0]['type'] == table_index_type.BTREE
     assert def1['indexes'][0]['name'] == 'test'
     # NOTE test that columns can appear in several indexes
-    class test2(pg_table):
-        t2_field1: Annotated[pg_smallint,
-                             pg_table_index(name='test'),
-                             pg_table_index(name='test1')]
-        t2_field2: Annotated[pg_smallint,
-                             pg_table_index(name='test')]
-        t2_field3: Annotated[pg_smallint,
-                             pg_table_index(name='test1')]
+    class test2(table):
+        t2_field1: Annotated[smallint,
+                             table_index(name='test'),
+                             table_index(name='test1')]
+        t2_field2: Annotated[smallint,
+                             table_index(name='test')]
+        t2_field3: Annotated[smallint,
+                             table_index(name='test1')]
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'indexes' in def2
@@ -507,7 +502,7 @@ def test_index_definition_correctly_extracted() -> None:
     assert any([ix['column_name'] == set(('t2_field1', 't2_field3')) for ix in def2['indexes']])
     assert any([ix['name'] == 'test' for ix in def2['indexes']])
     assert any([ix['name'] == 'test1' for ix in def2['indexes']])
-    assert all([ix['type'] == pg_table_index_type.BTREE for ix in def2['indexes']])
+    assert all([ix['type'] == table_index_type.BTREE for ix in def2['indexes']])
 
     # NOTE test that indexes are not inherited
     class test3(test2):
@@ -516,45 +511,45 @@ def test_index_definition_correctly_extracted() -> None:
     def3 = getattr(test3, '__pg_definition')()
     assert 'indexes' in def3
     assert def3['indexes'] is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], pg_table_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], pg_table_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], pg_table_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], table_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], table_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], table_index) is None
 
     try:
-        class test4(pg_table):
-            t2_field1: Annotated[pg_smallint,
-                                pg_table_index(name='test'),
-                                pg_table_index(name='test')]
+        class test4(table):
+            t2_field1: Annotated[smallint,
+                                table_index(name='test'),
+                                table_index(name='test')]
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
-        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type pg_table_index sharing name test.'
+        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type table_index sharing name test.'
 
 
 def test_unique_index_definition_correctly_extracted() -> None:
     # NOTE test unique index is correctly grouped by name in final definition
-    class test1(pg_table):
-        t1_field1: Annotated[pg_smallint,
-                             pg_table_unique_index(name='test')]
-        t1_field2: Annotated[pg_smallint,
-                             pg_table_unique_index(name='test')]
+    class test1(table):
+        t1_field1: Annotated[smallint,
+                             table_unique_index(name='test')]
+        t1_field2: Annotated[smallint,
+                             table_unique_index(name='test')]
     assert hasattr(test1, '__pg_definition')
     def1 = getattr(test1, '__pg_definition')()
     assert 'unique_indexes' in def1
     assert len(def1['unique_indexes']) == 1
     assert def1['unique_indexes'][0]['column_name'] == set(('t1_field2', 't1_field1'))
-    assert def1['unique_indexes'][0]['type'] == pg_table_index_type.BTREE
+    assert def1['unique_indexes'][0]['type'] == table_index_type.BTREE
     assert def1['unique_indexes'][0]['name'] == 'test'
     # NOTE test that columns can appear in several indexes
-    class test2(pg_table):
-        t2_field1: Annotated[pg_smallint,
-                             pg_table_unique_index(name='test'),
-                             pg_table_unique_index(name='test1')]
-        t2_field2: Annotated[pg_smallint,
-                             pg_table_unique_index(name='test')]
-        t2_field3: Annotated[pg_smallint,
-                             pg_table_unique_index(name='test1')]
+    class test2(table):
+        t2_field1: Annotated[smallint,
+                             table_unique_index(name='test'),
+                             table_unique_index(name='test1')]
+        t2_field2: Annotated[smallint,
+                             table_unique_index(name='test')]
+        t2_field3: Annotated[smallint,
+                             table_unique_index(name='test1')]
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'unique_indexes' in def2
@@ -563,7 +558,7 @@ def test_unique_index_definition_correctly_extracted() -> None:
     assert any([ix['column_name'] == set(('t2_field1', 't2_field3')) for ix in def2['unique_indexes']])
     assert any([ix['name'] == 'test' for ix in def2['unique_indexes']])
     assert any([ix['name'] == 'test1' for ix in def2['unique_indexes']])
-    assert all([ix['type'] == pg_table_index_type.BTREE for ix in def2['unique_indexes']])
+    assert all([ix['type'] == table_index_type.BTREE for ix in def2['unique_indexes']])
 
     # NOTE test that unique indexes are not inherited
     class test3(test2):
@@ -572,30 +567,30 @@ def test_unique_index_definition_correctly_extracted() -> None:
     def3 = getattr(test3, '__pg_definition')()
     assert 'unique_indexes' in def3
     assert def3['unique_indexes'] is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], pg_table_unique_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], pg_table_unique_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], pg_table_unique_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], table_unique_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], table_unique_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], table_unique_index) is None
 
     try:
-        class test4(pg_table):
-            t2_field1: Annotated[pg_smallint,
-                                pg_table_unique_index(name='test'),
-                                pg_table_unique_index(name='test')]
+        class test4(table):
+            t2_field1: Annotated[smallint,
+                                table_unique_index(name='test'),
+                                table_unique_index(name='test')]
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
-        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type pg_table_unique_index sharing name test.'
+        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type table_unique_index sharing name test.'
 
 
 def test_check_definition_correctly_extracted() -> None:
     # NOTE test that check constraints are not inherited
-    class test0(pg_table):
-        t0_field1: Annotated[pg_smallint,
-                             pg_check(name='test', predicate=this() > literal(0))]
-    class test1(pg_table):
-        t1_field1: Annotated[pg_smallint,
-                             pg_check(name='test', predicate=this() < literal(10))]
+    class test0(table):
+        t0_field1: Annotated[smallint,
+                             check(name='test', predicate=this() > literal(0))]
+    class test1(table):
+        t1_field1: Annotated[smallint,
+                             check(name='test', predicate=this() < literal(10))]
 
     class test2(test0, test1):
         pass
@@ -607,7 +602,7 @@ def test_check_definition_correctly_extracted() -> None:
     assert isinstance(def0['columns'] , list)
     assert len(def0['columns']) == 1
     assert def0['columns'][0]['name'] == 't0_field1'
-    assert def0['columns'][0]['type'] == pg_smallint
+    assert def0['columns'][0]['type'] == smallint
     assert def0['columns'][0]['comment'] is None
     assert 'check' in def0
     assert isinstance(def0['check'], dict)
@@ -623,7 +618,7 @@ def test_check_definition_correctly_extracted() -> None:
     assert isinstance(def1['columns'] , list)
     assert len(def1['columns']) == 1
     assert def1['columns'][0]['name'] == 't1_field1'
-    assert def1['columns'][0]['type'] == pg_smallint
+    assert def1['columns'][0]['type'] == smallint
     assert def1['columns'][0]['comment'] is None
     assert 'check' in def1
     assert isinstance(def1['check'], dict)
@@ -694,19 +689,19 @@ t0_field1\n\
   Value error, test0_test: constraint validation failed for value "-1" [type=value_error, input_value=-1, input_type=int]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
 
-    class test4(pg_table):
-        t4_field1: Annotated[pg_smallint,
-                             pg_check(name='test', predicate=this() > literal(0))]
-    class test5(pg_table):
-        t4_field1: Annotated[pg_smallint,
-                             pg_check(name='test', predicate=this() < literal(10))]
+    class test4(table):
+        t4_field1: Annotated[smallint,
+                             check(name='test', predicate=this() > literal(0))]
+    class test5(table):
+        t4_field1: Annotated[smallint,
+                             check(name='test', predicate=this() < literal(10))]
 
     class test6(test4, test5):
         pass
 
     class test7(test6):
-        t4_field1: Annotated[pg_smallint,
-                             pg_check(name='test', predicate=this() > literal(5))]
+        t4_field1: Annotated[smallint,
+                             check(name='test', predicate=this() > literal(5))]
     try:
         test6(t4_field1=11)
         assert False
@@ -742,37 +737,37 @@ t4_field1\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
 
     try:
-        class test4(pg_table):
-            t2_field1: Annotated[pg_smallint,
-                                 pg_check(name='test', predicate=this() > literal(0)),
-                                 pg_check(name='test', predicate=this() > literal(0))]
+        class test4(table):
+            t2_field1: Annotated[smallint,
+                                 check(name='test', predicate=this() > literal(0)),
+                                 check(name='test', predicate=this() > literal(0))]
     except FlowEndException as e:
         error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
-        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type pg_check sharing name test.'
+        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type check sharing name test.'
 
 
 def test_default_values_correctly_extracted() -> None:
     # NOTE test that default values are present in final column definition
-    class test0(pg_table):
-        t0_field1: Annotated[pg_smallint,
-                             pg_default_value(1)]
+    class test0(table):
+        t0_field1: Annotated[smallint,
+                             default_value(1)]
     # test0
     assert hasattr(test0, '__pg_definition')
     def0 = getattr(test0, '__pg_definition')()
     assert 'columns' in def0
     assert isinstance(def0['columns'], list)
     assert 'default_value' in def0['columns'][0]
-    assert isinstance(def0['columns'][0]['default_value'], pg_default_value)
+    assert isinstance(def0['columns'][0]['default_value'], default_value)
     assert str(def0['columns'][0]['default_value'].default) == '1'
 
-    class test_seq(pg_smallint_sequence):
+    class test_seq(smallint_sequence):
         pass
 
-    class test1(pg_table):
-        t0_field1: Annotated[pg_smallint,
-                             pg_default_sequence_nextval(seq=test_seq)]
+    class test1(table):
+        t0_field1: Annotated[smallint,
+                             default_nextval(seq=test_seq)]
 
 
     assert hasattr(test1, '__pg_definition')
@@ -780,27 +775,27 @@ def test_default_values_correctly_extracted() -> None:
     assert 'columns' in def1
     assert isinstance(def1['columns'], list)
     assert 'default_value' in def1['columns'][0]
-    assert isinstance(def1['columns'][0]['default_value'], pg_default_sequence_nextval)
+    assert isinstance(def1['columns'][0]['default_value'], default_nextval)
 
 
 def test_comments_correctly_extracted() -> None:
     # NOTE test that comment are present in final definition
     # NOTE test that comments are not inherited from parent classes
-    @with_pg_comment('table test comment')
-    class test0(pg_table):
-        t0_field1: Annotated[pg_smallint,
-                             pg_comment('test comment')]
+    @with_comment('table test comment')
+    class test0(table):
+        t0_field1: Annotated[smallint,
+                             comment('test comment')]
     # test0
     assert hasattr(test0, '__pg_definition')
     def0 = getattr(test0, '__pg_definition')()
     assert 'columns' in def0
     assert isinstance(def0['columns'], list)
     assert 'comment' in def0['columns'][0]
-    assert isinstance(def0['columns'][0]['comment'], pg_comment)
+    assert isinstance(def0['columns'][0]['comment'], comment)
     assert def0['columns'][0]['comment'].value == 'test comment'
     assert 'default_value' in def0['columns'][0]
     assert def0['columns'][0]['default_value'] is None
     assert 'comment' in def0
-    assert isinstance(def0['comment'], pg_comment)
+    assert isinstance(def0['comment'], comment)
     assert def0['comment'].value == 'table test comment'
 

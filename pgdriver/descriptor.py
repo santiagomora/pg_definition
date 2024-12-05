@@ -8,10 +8,10 @@ from psycopg.types.enum import\
     register_enum
 from psycopg.types import\
     TypeInfo
-from .base import\
+from .definition import\
     pg_class,\
     pg_type,\
-    pg_enum
+    enum
 from psycopg.adapt import\
     Loader,\
     Dumper
@@ -49,7 +49,7 @@ class PGTypeDescriptor:
         cls.set_info(info)
         register_composite(info)
 
-    async def register_enum(self, schema: str, name: str, cls: type[pg_enum]) -> None:
+    async def register_enum(self, schema: str, name: str, cls: type[enum]) -> None:
         info: Optional[EnumInfo] = await self._ta.get_enum_info(schema, name)
         if info is None:
             # el type no existe, hay que correr los script de migracion

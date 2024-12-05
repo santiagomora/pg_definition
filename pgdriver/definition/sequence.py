@@ -9,35 +9,35 @@ from .common.flow import\
     FlowNodeException,\
     execute_definition_flow
 from .builtin import\
-    pg_bigint,\
-    pg_smallint,\
-    pg_int,\
-    pg_builtin
+    bigint,\
+    smallint,\
+    integer,\
+    builtin
 
 
-__all__ = ['pg_bigint_sequence', 'pg_int_sequence', 'pg_smallint_sequence']
+__all__ = ['bigint_sequence', 'integer_sequence', 'smallint_sequence']
 
 
-_pg_sequence_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('sequence-definition-flow')
-sequence_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_pg_sequence_definition_flow_root)
+_sequence_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('sequence-definition-flow')
+sequence_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_sequence_definition_flow_root)
 
 
-class pg_sequence(pg_builtin):
+class sequence(builtin):
     def __new__(
         cls, clsname: str, clsbases: tuple[type],
         clsdict: dict[str, Any], **kwargs
     ) -> type:
         if len(clsbases) > 1:
-            raise TypeError('Class doesnt allow multiple bases')
+            raise TypeError(f'Class {cls} doesnt allow multiple bases')
         try:
-            allowed_bases: tuple[type, ...] = (pg_bigint_sequence, pg_int_sequence, pg_smallint_sequence, )
+            allowed_bases: tuple[type, ...] = (bigint_sequence, integer_sequence, smallint_sequence, )
             if clsbases[0] not in allowed_bases:
                 raise TypeError(f'Class {clsname} must be a subclass of any of these classes {allowed_bases}')
         except NameError:
             pass
         ret_type: type = super()\
             .__new__(cls, clsname, clsbases, clsdict)
-        execute_definition_flow(ret_type, _pg_sequence_definition_flow_root)
+        execute_definition_flow(ret_type, _sequence_definition_flow_root)
         return ret_type
 
 
@@ -49,9 +49,9 @@ class _SequenceValidateBaseClassesClassNode(SingleChoiceDefinitionFlowNode):
         base_cls_count: dict[type, int] = {}
         for base_cls in target.mro():
             base_cls_count[base_cls] = base_cls_count.get(base_cls, 0) + 1
-        appearance_count = sum([base_cls_count.get(tp, 0) for tp in (pg_int, pg_bigint, pg_smallint, )])
+        appearance_count = sum([base_cls_count.get(tp, 0) for tp in (integer, bigint, smallint, )])
         if appearance_count > 1:
-            raise FlowNodeException(f'Sequence cant inherit from more than one {pg_int}, {pg_bigint} or {pg_smallint}')
+            raise FlowNodeException(f'Sequence cant inherit from more than one {integer}, {bigint} or {smallint}')
 
 
 class _SequenceExtractBaseTypeNode(SingleChoiceDefinitionFlowNode):
@@ -61,7 +61,7 @@ class _SequenceExtractBaseTypeNode(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         extracted: Optional[type] = None
         for base_cls in target.mro():
-            if base_cls in (pg_int, pg_bigint, pg_smallint, ):
+            if base_cls in (integer, bigint, smallint, ):
                 extracted = base_cls
                 break
         accumulator.add_definition('base_type', extracted)
@@ -101,13 +101,13 @@ sequence_flow_builder\
         .add_node(_SequenceStoreFinalDefinitionNode)
 
 
-class pg_bigint_sequence(pg_bigint, metaclass=pg_sequence):
+class bigint_sequence(bigint, metaclass=sequence):
     pass
 
 
-class pg_int_sequence(pg_int, metaclass=pg_sequence):
+class integer_sequence(integer, metaclass=sequence):
     pass
 
 
-class pg_smallint_sequence(pg_smallint, metaclass=pg_sequence):
+class smallint_sequence(smallint, metaclass=sequence):
     pass

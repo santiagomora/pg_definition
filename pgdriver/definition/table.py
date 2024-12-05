@@ -20,8 +20,8 @@ from .common.flow import\
     FlowNodeException,\
     DefinitionFlowBuilder
 from .common.model import\
-    pg_table,\
-    pg_table_definition_flow_root,\
+    table,\
+    table_definition_flow_root,\
     ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
     ModelValidateFieldsBaseTypeNode,\
@@ -29,12 +29,12 @@ from .common.model import\
     ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
     ModelExtractCheckConstraintsNode
 from .composite import\
-    pg_composite
+    composite
 from .enums import\
-    pg_enum
+    enums
 from .builtin import\
-    pg_builtin
-from ..inspection import\
+    builtin
+from .common.inspection import\
     extract_by_instance_type_from_model_fields_info,\
     aggregate,\
     ordered_set_accumulator,\
@@ -46,16 +46,33 @@ from ..inspection import\
     extract_by_instance_type_from_field_info,\
     extract_type,\
     extract_definition_fields
-from .common.meta import\
-    pg_check,\
-    pg_default_value,\
-    pg_comment,\
+from .meta import\
+    check,\
+    default_value,\
+    comment,\
     OperandDefinitionContext
 from .sequence import\
-    pg_sequence
-from ..extraction.base import\
-    pg_table_index_type,\
-    pg_table_foreign_key_action
+    sequence
+from enum import \
+    Enum
+
+
+class table_index_type(Enum):
+    BTREE = 'btree'
+    HASH = 'hash'
+    GIN = 'gin'
+    BRIN = 'brin'
+    GIST = 'gist'
+    SPGIST = 'spgist'
+
+
+class table_foreign_key_action(Enum):
+    SET_NULL = 'SET NULL'
+    SET_DEFAULT = 'SET DEFAULT'
+    RESTRICT = 'RESTRICT'
+    NO_ACTION = 'NO ACTION'
+    CASCADE = 'CASCADE'
+
 
 # KNOWN BUGS
 # BUG: if two parent table share the same value of the same type, and each one sets a different default value, then postgres will raise a conflict error, breaking the transaction. wont be implemented in this first version.
@@ -65,47 +82,47 @@ T = TypeVar("T")
 
 
 @dataclass(kw_only=True)
-class pg_table_index:
+class table_index:
     name: str
-    type: pg_table_index_type = pg_table_index_type.BTREE
+    type: table_index_type = table_index_type.BTREE
 
 
 @dataclass(kw_only=True)
-class pg_table_unique_index:
+class table_unique_index:
     name: str
-    type: pg_table_index_type = pg_table_index_type.BTREE
+    type: table_index_type = table_index_type.BTREE
 
 
 @dataclass(kw_only=True)
-class pg_table_primary_key:
+class table_primary_key:
     name: str
 
 
 @dataclass(kw_only=True)
-class pg_table_foreign_key:
+class table_foreign_key:
     name: str
-    other_class: type[pg_table]
+    other_class: type[table]
     other_class_column_name: str
-    on_update: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
-    on_delete: pg_table_foreign_key_action = pg_table_foreign_key_action.NO_ACTION
+    on_update: table_foreign_key_action = table_foreign_key_action.NO_ACTION
+    on_delete: table_foreign_key_action = table_foreign_key_action.NO_ACTION
 
     def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        if not issubclass(self.other_class, pg_table):
-            raise TypeError(f'Other class {self.other_class} must be a {pg_table} instance')
+        if not issubclass(self.other_class, table):
+            raise TypeError(f'Other class {self.other_class} must be a {table} instance')
         if self.other_class_column_name not in self.other_class.model_fields:
             raise TypeError(f'Foreign key column {self.other_class_column_name} must exist in {self.other_class} definition')
         other_class_column: FieldInfo = self.other_class.model_fields[self.other_class_column_name]
         if extract_type(other_class_column.annotation) != extract_type(source):
             raise TypeError(f'Foreign key column {handler.field_name} type must match with {self.other_class_column_name} in {self.other_class} definition')
         schema: core_schema.CoreSchema = handler(source)
-        # ignore class pg_check[T] has no attribute __orig_class__ error
+        # ignore class check[T] has no attribute __orig_class__ error
         # raised by mypy
         return schema
 
 
 @dataclass(kw_only=True)
-class pg_default_sequence_nextval:
-    seq: pg_sequence
+class default_nextval:
+    seq: sequence
 
     def __get_pydantic_core_schema__(self, source: type, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
         base_seq: type = getattr(self.seq, '__pg_definition')()['base_type']
@@ -116,7 +133,7 @@ class pg_default_sequence_nextval:
             errors.append('Sequence type must match annotated type')
         if len(errors) > 0:
             raise TypeError(', '.join(errors))
-        # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
+        # ignore class table_meta.check[T] has no attribute __orig_class__ error
         # raised by mypy
         return core_schema.with_info_after_validator_function(
             function=self.validate,
@@ -134,7 +151,7 @@ class pg_default_sequence_nextval:
         return value
 
 
-table_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(pg_table_definition_flow_root)
+table_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(table_definition_flow_root)
 
 
 class _TableValidateConsistentBaseClassesNode(SingleChoiceDefinitionFlowNode):
@@ -161,11 +178,11 @@ class _TableValidateConsistentBaseClassesNode(SingleChoiceDefinitionFlowNode):
         has_more_than_one_base: bool = len(target.__bases__) > 1
         field_types = self.add_field_types(target, None)
         for base_class in target.__bases__:
-            if not issubclass(base_class, pg_table):
-                errors.append(f'Inherited class {base_class} must be a subclass of {pg_table}')
+            if not issubclass(base_class, table):
+                errors.append(f'Inherited class {base_class} must be a subclass of {table}')
                 continue
-            elif has_more_than_one_base and base_class == pg_table:
-                errors.append(f'Cant define {pg_table} as base class if {target} is set to inherit more than one base class')
+            elif has_more_than_one_base and base_class == table:
+                errors.append(f'Cant define {table} as base class if {target} is set to inherit more than one base class')
             field_types = self.add_field_types(base_class, field_types)
         for field in field_types:
             if len(field_types[field]) > 1:
@@ -196,7 +213,7 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
     def __init__(self):
         super().__init__('table-validate-mutually-exclusive-metadata-node')
         self.mutually_exclusive: list[tuple[type, type]] = [
-            (pg_default_value, pg_default_sequence_nextval)]
+            (default_value, default_nextval)]
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
@@ -205,7 +222,7 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
                 tp1inst: Optional[Any] = extract_first_instance_from_field_metadata(info, tp1)
                 tp2inst: Optional[Any] = extract_first_instance_from_field_metadata(info, tp2)
                 if tp1inst is not None and tp2inst is not None:
-                    errors.append(f'Field {field} described by two mutually exclusive metadata instances: {repr(tp2inst)} and {repr(tp2inst)}')
+                    errors.append(f'Field {field} described by two mutually exclusive metadata instances: {repr(tp2inst)} and {repr(tp1inst)}')
         if len(errors) > 0:
             raise FlowNodeException(self.name, errors)
 
@@ -213,35 +230,35 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
 class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('table-validate-same-type-meta-instances-have-different-names-node',
-                         types=[pg_check, pg_table_unique_index, pg_table_index])
+                         types=[check, table_unique_index, table_index])
 
 
 class _TableValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-restricted-metadata-types-node',
-                         types=[pg_table_foreign_key, pg_table_primary_key, pg_table_index,
-                                pg_table_unique_index, pg_check, pg_default_value,
-                                pg_default_sequence_nextval, pg_comment])
+                         types=[table_foreign_key, table_primary_key, table_index,
+                                table_unique_index, check, default_value,
+                                default_nextval, comment])
 
 
 class _TableValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-unique-metadata-types-node',
-                         types=[pg_table_foreign_key, pg_table_primary_key, pg_default_value,
-                                pg_default_sequence_nextval, pg_comment])
+                         types=[table_foreign_key, table_primary_key, default_value,
+                                default_nextval, comment])
 
 
 class _TableValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
     def __init__(self):
         super().__init__('table-validate-fields-base-type-node',
-                         type_subclass=[pg_enum, pg_builtin, pg_composite],
-                         type_instance=[pg_builtin])
+                         type_subclass=[enums, builtin, composite],
+                         type_instance=[builtin])
 
 
 class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('table-validate-same-type-meta-instances-have-different-names-node',
-                         types=[pg_check, pg_table_unique_index, pg_table_index])
+                         types=[check, table_unique_index, table_index])
 
 
 class _TableDependsOnValidationNodes:
@@ -264,7 +281,7 @@ class _TableExtractIndexesNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         indexes: list[dict[str, Any]] = [ix for _, ix in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_index,
+            table_index,
             lambda field_name, index: {
                 'column_name': field_name,
                 'type':   index.type,
@@ -287,7 +304,7 @@ class _TableExtractUniqueIndexesNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         uixs: list[dict[str, Any]] = [uix for _, uix in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_unique_index,
+            table_unique_index,
             lambda field_name, uix: {
                 'column_name': field_name,
                 'type':        uix.type,
@@ -310,7 +327,7 @@ class _TableExtractPrimaryKeyNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         pks: list[dict[str, Any]] = [pk for _, pk in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_primary_key,
+            table_primary_key,
             lambda field_name, pk: {
                 'column_name': field_name,
                 'name':   pk.name})]
@@ -362,7 +379,7 @@ class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         fks: list[dict[str, Any]] = [fk for _, fk in extract_by_instance_type_from_model_fields_info(
             target,
-            pg_table_foreign_key,
+            table_foreign_key,
             lambda field_name, fk: {
                 'name':                     fk.name,
                 'other_class':              fk.other_class,
@@ -401,14 +418,14 @@ class _TableExtractColumnsNode(SingleChoiceDefinitionFlowNode, _TableDependsOnVa
             col_data: dict[str, Any] = {
                 'name': name,
                 'type': info.annotation}
-            comment: Optional[pg_comment] = extract_first_instance_from_field_metadata(info, pg_comment)
-            col_data['comment'] = comment
-            default_value: Optional[pg_default_value | pg_default_sequence_nextval] = extract_first_instance_from_field_metadata(info, pg_default_value)
-            if default_value is not None:
-                default_value.default.propagate_definition(target.model_fields[name].annotation, name, OperandDefinitionContext.TABLE)
+            comment_inst: Optional[comment] = extract_first_instance_from_field_metadata(info, comment)
+            col_data['comment'] = comment_inst
+            default: Optional[default_value | default_nextval] = extract_first_instance_from_field_metadata(info, default_value)
+            if default is not None:
+                default.default.propagate_definition(target.model_fields[name].annotation, name, OperandDefinitionContext.TABLE)
             else:
-                default_value = extract_first_instance_from_field_metadata(info, pg_default_sequence_nextval)
-            col_data['default_value'] = default_value
+                default = extract_first_instance_from_field_metadata(info, default_nextval)
+            col_data['default_value'] = default
             columns.append(col_data)
         accumulator.add_definition('columns', columns)
 
@@ -470,4 +487,4 @@ table_flow_builder\
         .add_node(_TableStoreFinalDefinitionNode).critical()
 
 
-__all__ = {'pg_table': pg_table}
+__all__ = {'table': table}

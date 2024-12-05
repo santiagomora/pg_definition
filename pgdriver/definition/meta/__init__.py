@@ -33,7 +33,7 @@ class _TypeCompatibility(dict[type, type]):
         return None
 
 
-class pg_check:
+class check:
     type_compatibility: _TypeCompatibility = _TypeCompatibility()
 
     def __init__(self, *, name: str, predicate: LogicOperand) -> None:
@@ -42,7 +42,7 @@ class pg_check:
         self._source = None
 
     def __repr__(self):
-        return f'pg_check(name={self.name}, predicate={repr(self.predicate)})'
+        return f'check(name={self.name}, predicate={repr(self.predicate)})'
 
     def __str__(self):
         return f'({str(self.predicate)})'
@@ -68,14 +68,16 @@ class pg_check:
 
 
 @dataclass
-class pg_comment:
+class comment:
     value: str
 
 
 T = TypeVar('T')
 
 
-class pg_default_value:
+class default_value:
+    def __repr__(self) -> str:
+        return f'default_value({self.default})'
 
     def __init__(self, *args, **kwargs) -> None:
         self.default = literal(*args, **kwargs)
@@ -91,7 +93,7 @@ class pg_default_value:
         #     errors.append('Base type must match annotated type')
         # if len(errors) > 0:
         #     raise TypeError(', '.join(errors))
-        # # ignore class pg_table_meta.check[T] has no attribute __orig_class__ error
+        # # ignore class table_meta.check[T] has no attribute __orig_class__ error
         # # raised by mypy
         return core_schema.with_info_after_validator_function(
             function=self.validate_value,

@@ -5,26 +5,22 @@ from .flow import\
     FlowAccumulator,\
     FlowNodeException
 from pydantic import\
-    BaseModel,\
-    ConfigDict
-from .meta import\
-    pg_check,\
+    BaseModel
+from ..meta import\
+    check,\
     OperandDefinitionContext
-from pydantic.fields import\
-    FieldInfo
-from ...inspection import\
+from .inspection import\
     get_field_classified_metadata_appearances,\
     extract_definition_fields,\
     extract_type,\
-    key_by,\
     extract_inherited_fields,\
     extract_by_instance_type_from_model_fields_info
 from typing import\
     Any
 
 
-pg_composite_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('composite-definition-flow')
-pg_table_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('table-definition-flow')
+composite_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('composite-definition-flow')
+table_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('table-definition-flow')
 
 
 class _PGBaseModelMeta(type(BaseModel)):
@@ -34,12 +30,12 @@ class _PGBaseModelMeta(type(BaseModel)):
             .__new__(cls, clsname, clsbases, namespace, **(kwargs))
 
         try:
-            if issubclass(rettype, pg_table):
-                execute_definition_flow(rettype, pg_table_definition_flow_root)
-            elif issubclass(rettype, pg_composite):
+            if issubclass(rettype, table):
+                execute_definition_flow(rettype, table_definition_flow_root)
+            elif issubclass(rettype, composite):
                 if len(clsbases) > 1:
-                    raise TypeError('Class doesnt allow multiple bases')
-                execute_definition_flow(rettype, pg_composite_definition_flow_root)
+                    raise TypeError(f'Class {cls} doesnt allow multiple bases')
+                execute_definition_flow(rettype, composite_definition_flow_root)
         except NameError:
             pass
         return rettype
@@ -52,11 +48,11 @@ class _PGBaseModel(BaseModel, metaclass=_PGBaseModelMeta):
         return super().__init__(**data)
 
 
-class pg_composite(_PGBaseModel):
+class composite(_PGBaseModel):
     pass
 
 
-class pg_table(_PGBaseModel):
+class table(_PGBaseModel):
     pass
 
 
@@ -92,7 +88,7 @@ class ModelValidateUniqueMetadataTypesNode(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
         # extract_by_instance_type_from_model_fields_info debe obtener toda la metadata
-        # hasta el type basico subyacente. por ejemplo de pg_int hasta el type
+        # hasta el type basico subyacente. por ejemplo de integer hasta el type
         # int subyacente
         for name, info in extract_definition_fields(target):
             classified_field_meta: dict[type, int] = get_field_classified_metadata_appearances(info)
@@ -182,12 +178,12 @@ class ModelExtractCheckConstraintsNode(SingleChoiceDefinitionFlowNode):
         self._context = context
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        checks: dict[str, pg_check] = {}
-        for field, check in extract_by_instance_type_from_model_fields_info(target, pg_check):
-            check.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
-            check.name = f'{target.__name__}_{check.name}'
-            if check.name not in checks:
-                checks[check.name] = check
+        checks: dict[str, check] = {}
+        for field, ck in extract_by_instance_type_from_model_fields_info(target, check):
+            ck.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
+            ck.name = f'{target.__name__}_{ck.name}'
+            if ck.name not in checks:
+                checks[ck.name] = ck
             else:
-                checks[check.name].predicate = checks[check.name].predicate & check.predicate
+                checks[ck.name].predicate = checks[ck.name].predicate & ck.predicate
         accumulator.add_definition('check_constraints', checks if checks != {} else None)

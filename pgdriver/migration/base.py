@@ -6,7 +6,7 @@ from pydantic import\
     BaseModel
 
 
-class pg_table_index_type(Enum):
+class table_index_type(Enum):
     BTREE = 'btree'
     HASH = 'hash'
     GIN = 'gin'
@@ -15,7 +15,7 @@ class pg_table_index_type(Enum):
     SPGIST = 'spgist'
 
 
-class pg_table_foreign_key_action(Enum):
+class table_foreign_key_action(Enum):
     SET_NULL = 'SET NULL'
     SET_DEFAULT = 'SET DEFAULT'
     RESTRICT = 'RESTRICT'
@@ -31,7 +31,7 @@ class pg_attribute_definition(BaseModel):
     type_name: str
 
 
-class pg_composite_definition(BaseModel):
+class composite_definition(BaseModel):
     name: str
     schema_name: str
     attributes: list[pg_attribute_definition]
@@ -51,8 +51,8 @@ class pg_foreign_key_definition(BaseModel):
     class_column_name: tuple[str]
     other_class_name: str
     other_class_column_name: tuple[str]
-    on_delete: pg_table_foreign_key_action
-    on_update: pg_table_foreign_key_action
+    on_delete: table_foreign_key_action
+    on_update: table_foreign_key_action
 
 
 class pg_primary_key_definition(BaseModel):
@@ -63,11 +63,11 @@ class pg_primary_key_definition(BaseModel):
 class pg_index_definition(BaseModel):
     name: str
     column_name: tuple[str]
-    type: pg_table_index_type
+    type: table_index_type
     is_unique: bool
 
 
-class pg_table_definition(BaseModel):
+class table_definition(BaseModel):
     name: str
     schema_name: str
     base_classes: tuple[str]
@@ -78,16 +78,16 @@ class pg_table_definition(BaseModel):
     primary_key: Optional[pg_primary_key_definition]
 
 
-class pg_enum_value_definition(BaseModel):
+class enums_value_definition(BaseModel):
     value: str
     order: int
 
 
-class pg_enum_definition(BaseModel):
+class enums_definition(BaseModel):
     name: str
     schema_name: str
     comment: Optional[str]
-    values: list[pg_enum_value_definition]
+    values: list[enums_value_definition]
 
 
 class pg_domain_definition(BaseModel):
@@ -98,7 +98,7 @@ class pg_domain_definition(BaseModel):
     base_type_name: str
 
 
-class pg_sequence_definition(BaseModel):
+class sequence_definition(BaseModel):
     name: str
     schema_name: str
     comment: Optional[str]

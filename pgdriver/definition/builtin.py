@@ -1,6 +1,7 @@
 from typing import\
     Any,\
-    Literal
+    Literal,\
+    Union
 from pydantic_core import\
     core_schema
 from pydantic import\
@@ -19,16 +20,21 @@ import numpy as np
 import warnings
 
 # TODO configure flow components runtime dependencies
-_pg_builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('builtin-definition-flow')
-builtin_builder = DefinitionFlowBuilder(_pg_builtin_definition_flow_root)
+_builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('builtin-definition-flow')
+builtin_builder = DefinitionFlowBuilder(_builtin_definition_flow_root)
 
 
-class pg_builtin(type):
+__all__ = ['integer', 'bigint', 'smallint', 'text', 'double', 'real',
+           'byte', 'char', 'timestamp', 'time', 'date', 'boolean',
+           'builtin_instance']
+
+
+class builtin(type):
     def __new__(cls, clsname: str, clsbases: tuple[type],
                 clsdict: dict[str, Any], **kwargs) -> type:
 
         if len(clsbases) > 1:
-            raise TypeError('Class doesnt allow multiple bases')
+            raise TypeError(f'Class {cls} doesnt allow multiple bases')
 
         def __new__(cls_, *args, **kwargs) -> Any:
             with warnings.catch_warnings(action="ignore"):
@@ -79,7 +85,7 @@ class pg_builtin(type):
                       '__pg_attempt_to_create_instance__': __pg_attempt_to_create_instance__,
                       '__pg_create_instance__': __pg_create_instance__,
                       '__pg_validate_instance__': __pg_validate_instance__} | clsdict)
-        execute_definition_flow(ret_type, _pg_builtin_definition_flow_root)
+        execute_definition_flow(ret_type, _builtin_definition_flow_root)
         return ret_type
 
 
@@ -132,39 +138,39 @@ builtin_builder\
         .end_choice()
 
 
-class pg_smallint(np.int16, metaclass=pg_builtin):
+class smallint(np.int16, metaclass=builtin):
     pass
 
 
-class pg_int(np.int32, metaclass=pg_builtin):
+class integer(np.int32, metaclass=builtin):
     pass
 
 
-class pg_bigint(np.int64, metaclass=pg_builtin):
+class bigint(np.int64, metaclass=builtin):
     pass
 
 
-class pg_text(str, metaclass=pg_builtin):
+class text(str, metaclass=builtin):
     pass
 
 
-class pg_float(np.float32, metaclass=pg_builtin):
+class real(np.float32, metaclass=builtin):
     pass
 
 
-class pg_double(np.float64, metaclass=pg_builtin):
+class double(np.float64, metaclass=builtin):
     pass
 
 
-class pg_char(np.int8, metaclass=pg_builtin):
+class char(np.int8, metaclass=builtin):
     pass
 
 
-class pg_byte(np.byte, metaclass=pg_builtin):
+class byte(np.byte, metaclass=builtin):
     pass
 
 
-class pg_boolean(np.bool, metaclass=pg_builtin):
+class boolean(np.bool, metaclass=builtin):
     pass
 
 
@@ -181,7 +187,7 @@ def _create_from_model_field(cls: type, value: Any, default_unit: str):
 # we'll always work with ISO8061 utc timestamps, what will change is
 # how these representations get stored into the database, we will
 # have to define each function for conversion
-class pg_datetime(np.datetime64, metaclass=pg_builtin):
+class timestamp(np.datetime64, metaclass=builtin):
     @classmethod
     def __pg_create_instance_custom__(
         cls,
@@ -190,8 +196,8 @@ class pg_datetime(np.datetime64, metaclass=pg_builtin):
         return _create_from_model_field(cls, value, 'us')
 
 
-class pg_time(np.datetime64, metaclass=pg_builtin):
-    # pg_time will always be a tuple, as it is possible to specify time units
+class time(np.datetime64, metaclass=builtin):
+    # time will always be a tuple, as it is possible to specify time units
     # first parameter can be a 'hh?:mm?:ss?,(...)' string or an integer
     def __new__(
         cls,
@@ -199,7 +205,7 @@ class pg_time(np.datetime64, metaclass=pg_builtin):
         unit: Literal['h', 'm', 's', 'ms', 'us', 'ns', 'fs', 'as'] = 'us'
     ):
         if unit not in ('h', 'm', 's', 'ms', 'us', 'ns', 'fs', 'as'):
-            raise ValueError('Invalid unit for pg_time')
+            raise ValueError('Invalid unit for time')
         if isinstance(value, str):
             value = f'1970-01-01T{value}'
         return super().__new__(cls, value, unit)
@@ -212,7 +218,7 @@ class pg_time(np.datetime64, metaclass=pg_builtin):
         return _create_from_model_field(cls, value, 'us')
 
 
-class pg_date(np.datetime64, metaclass=pg_builtin):
+class date(np.datetime64, metaclass=builtin):
     def __new__(
         cls,
         value: str | int
@@ -220,16 +226,6 @@ class pg_date(np.datetime64, metaclass=pg_builtin):
         return super().__new__(cls, value, 'D')
 
 
-__all__ = {
-    'pg_int':      pg_int,
-    'pg_bigint':   pg_bigint,
-    'pg_smallint': pg_smallint,
-    'pg_text':     pg_text,
-    'pg_double':   pg_double,
-    'pg_float':    pg_float,
-    'pg_byte':     pg_byte,
-    'pg_char':     pg_char,
-    'pg_datetime': pg_datetime,
-    'pg_time':     pg_time,
-    'pg_date':     pg_date,
-    'pg_boolean':  pg_boolean}
+builtin_instance = Union[integer, bigint, smallint, text, double,
+                            real, byte, char, timestamp, time, date,
+                            boolean]

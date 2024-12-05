@@ -9,8 +9,8 @@ from .common.flow import\
     DefinitionFlowBuilder,\
     CommonDetermineIfTargetIsDomainNode
 from .common.model import\
-    pg_composite_definition_flow_root,\
-    pg_composite,\
+    composite_definition_flow_root,\
+    composite,\
     ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
     ModelValidateFieldsBaseTypeNode,\
@@ -18,15 +18,15 @@ from .common.model import\
     ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
     ModelExtractCheckConstraintsNode
 from .builtin import\
-    pg_builtin
+    builtin
 from .enums import\
-    pg_enum
-from .common.meta import\
-    pg_check,\
-    pg_comment,\
+    enums
+from .meta import\
+    check,\
+    comment,\
     LogicOperand,\
     OperandDefinitionContext
-from ..inspection import\
+from .common.inspection import\
     extract_definition_fields,\
     get_field_parent_definition,\
     extract_first_instance_from_field_metadata,\
@@ -35,13 +35,13 @@ from functools import\
     reduce
 
 
-composite_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(pg_composite_definition_flow_root)
+composite_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(composite_definition_flow_root)
 
 """
 Some observations on postgres composite types
 
 1. composite types cannot directly define check constraints, this is, user wont
-be able to use pg_check when defining a direct descendant of pg_composite,
+be able to use check when defining a direct descendant of composite,
 but this situation changes when defining a domain. Postgres allows user to declare
 check constraints on domain types, so a composite domain has a totally different
 workflow than a composite type.
@@ -53,20 +53,20 @@ workflow than a composite type.
 class _CompositeValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
     def __init__(self):
         super().__init__('composite-validate-fields-base-type-node',
-                         type_subclass=[pg_enum, pg_builtin, pg_composite],
-                         type_instance=[pg_builtin])
+                         type_subclass=[enums, builtin, composite],
+                         type_instance=[builtin])
 
 
 class _CompositeValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-restricted-metadata-types-node',
-                         types=[pg_comment])
+                         types=[comment])
 
 
 class _CompositeValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-unique-metadata-types-node',
-                         types=[pg_comment])
+                         types=[comment])
 
 
 class _CompositeDependsOnValidationNodes:
@@ -93,7 +93,7 @@ class _CompositeExtractAttributesDefinitionNode(SingleChoiceDefinitionFlowNode,
             attributes[name] = {
                 'name': name,
                 'type': info.annotation,
-                'comment': extract_first_instance_from_field_metadata(info, pg_comment)}
+                'comment': extract_first_instance_from_field_metadata(info, comment)}
         if len(attributes) <= 0:
             raise FlowNodeException(self.name, [f'Class {target} must declare attributes.'])
         accumulator.add_definition('attributes', attributes)
@@ -117,7 +117,7 @@ class _CompositeStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 class _CompositeDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNode,
                                               _CompositeDependsOnValidationNodes):
     def __init__(self):
-        super().__init__('composite-determine-if-target-is-domain-node', pg_composite)
+        super().__init__('composite-determine-if-target-is-domain-node', composite)
 
     def get_next(self, accumulator: FlowAccumulator) -> DefinitionFlowNode:
         try:
@@ -131,14 +131,14 @@ class _CompositeDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNod
 class _CompositeDomainValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-domain-validate-restricted-metadata-types-node',
-                         types=[pg_check])
+                         types=[check])
 
 
 class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
     """
     Validate composite attributes, there's two  scenarios according to the base class:
-    1. direct inheritance from pg_composite: it can declare any set of attributes
-    2. inheritance from a pg_composite subclass: declared type can only override 
+    1. direct inheritance from composite: it can declare any set of attributes
+    2. inheritance from a composite subclass: declared type can only override 
     base class attributes. it cannot declare additional fields.
     """
 
@@ -157,7 +157,7 @@ class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
 class _CompositeDomainValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('composite-domain-validate-same-type-meta-instances-have-different-names-node',
-                         types=[pg_check])
+                         types=[check])
 
 class _CompositeDomainDependsOnValidationNodes:
     def get_dependencies(self) -> tuple[str]:
@@ -244,4 +244,4 @@ composite_flow_builder\
             .add_node(_CompositeDomainStoreFinalDefinitionNode).critical()\
             .end_choice()
 
-__all__ = {'pg_composite': pg_composite}
+__all__ = {'composite': composite}

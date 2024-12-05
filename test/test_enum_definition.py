@@ -1,22 +1,20 @@
-from pgdriver.definition.build import\
-    pg_enum
 from enum import\
     auto
+from pgdriver import\
+    enums,\
+    with_comment,\
+    with_default_value,\
+    comment,\
+    FlowEndException,\
+    FlowNodeException,\
+    default_value
 from typing import\
     Optional
-from pgdriver.definition.base.common.flow import\
-    FlowEndException,\
-    FlowNodeException
-from pgdriver.definition.build import\
-    with_pg_comment,\
-    with_pg_default_value,\
-    pg_comment,\
-    pg_default_value
 
 
-def test_enum_definition_flow_executes_correctly() -> None:
+def test_enums_definition_flow_executes_correctly() -> None:
     # NOTE: test that definitions get correctly extracted
-    class test0(pg_enum):
+    class test0(enums):
         FIELD = auto()
 
     assert hasattr(test0, '__pg_definition')
@@ -32,7 +30,7 @@ def test_enum_definition_flow_executes_correctly() -> None:
 
     # NOTE: test that members are string
     try:
-        class test0(pg_enum):
+        class test0(enums):
             FIELD = 1
         assert False
     except TypeError as e:
@@ -43,30 +41,30 @@ def test_enum_definition_flow_executes_correctly() -> None:
         class test:
             pass
 
-        class test0(pg_enum, test):
+        class test0(enums, test):
             FIELD = 1
         assert False
     except TypeError as e:
         assert str(e) == 'new enumerations should be created as `EnumName([mixin_type, ...] [data_type,] enum_type)`'
 
 
-def test_enum_domain_definition_flow_executes_correctly() -> None:
-    # NOTE: enum definition flow detects domain declaring additional members
+def test_enums_domain_definition_flow_executes_correctly() -> None:
+    # NOTE: enums definition flow detects domain declaring additional members
     try:
-        class test0(pg_enum):
+        class test0(enums):
             FIELD = auto()
 
         class test1(test0):
             FIELD1 = auto()
         assert False
     except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('enum-definition-flow',
-                                                         'enum-domain-validate-members-node')
+        error: Optional[FlowNodeException] = e.get_error('enums-definition-flow',
+                                                         'enums-domain-validate-members-node')
         assert error is not None
-        assert str(error) == "<enum 'test1'> enum cant define own member FIELD1 if it inherits from a <enum 'pg_enum'> subclass"
+        assert str(error) == "<enum 'test1'> enums cant define own member FIELD1 if it inherits from a <enum 'enums'> subclass"
 
-    # NOTE: enum definition flow detects domain declaring additional members
-    class test2(pg_enum):
+    # NOTE: enums definition flow detects domain declaring additional members
+    class test2(enums):
         FIELD1 = auto()
         FIELD2 = auto()
         FIELD3 = auto()
@@ -99,7 +97,7 @@ def test_enum_domain_definition_flow_executes_correctly() -> None:
         assert test3[memb.name].value == memb.value
 
     try:
-        class test5(pg_enum):
+        class test5(enums):
             FIELD1 = auto()
 
         class test6(test5):
@@ -108,15 +106,15 @@ def test_enum_domain_definition_flow_executes_correctly() -> None:
         assert str(e) == "'FIELD1' already defined as 'field1'"
 
 
-def test_comments_correctly_added_to_enum_definition() -> None:
-    @with_pg_comment('test comment')
-    class test0(pg_enum):
+def test_comments_correctly_added_to_enums_definition() -> None:
+    @with_comment('test comment')
+    class test0(enums):
         FIELD = auto()
 
     assert hasattr(test0, '__pg_definition')
     def0 = getattr(test0, '__pg_definition')()
     assert 'comment' in def0
-    assert def0['comment'] == pg_comment('test comment')
+    assert def0['comment'] == comment('test comment')
 
     class test1(test0):
         pass
@@ -126,46 +124,46 @@ def test_comments_correctly_added_to_enum_definition() -> None:
     assert 'comment' in def1
     assert def1['comment'] is None
 
-    @with_pg_comment('test comment')
+    @with_comment('test comment')
     class test2(test1):
         pass
 
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'comment' in def2
-    assert def2['comment'] == pg_comment('test comment')
+    assert def2['comment'] == comment('test comment')
 
 
-def test_default_value_to_enum_definition() -> None:
+def test_default_value_to_enums_definition() -> None:
     try:
-        @with_pg_default_value('test comment')
-        class test0(pg_enum):
+        @with_default_value('test comment')
+        class test0(enums):
             FIELD1 = auto()
         assert False
     except KeyError as e:
         assert str(e) == "'default_value'"
 
-    class test1(pg_enum):
+    class test1(enums):
         FIELD1 = auto()
 
-    @with_pg_default_value('field1')
+    @with_default_value('field1')
     class test2(test1):
         pass
 
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'default_value' in def2
-    assert isinstance(def2['default_value'], pg_default_value)
+    assert isinstance(def2['default_value'], default_value)
     assert def2['default_value'].default._lit == test2('field1')
 
     try:
-        class test3(pg_enum):
+        class test3(enums):
             FIELD1 = auto()
 
-        @with_pg_default_value('test')
+        @with_default_value('test')
         class test4(test3):
             pass
         assert False
     except ValueError as e:
-        assert str(e) == "'test' is not a valid test_default_value_to_enum_definition.<locals>.test4"
+        assert str(e) == "'test' is not a valid test_default_value_to_enums_definition.<locals>.test4"
 
