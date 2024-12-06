@@ -30,26 +30,31 @@
             "returns": null
         }
     },
-    "table": {
+    "table_regtypes": {
         "author": {
-            "oid": 43919,
+            "oid": 43921,
             "array_oid": null,
+            "regtype": "author"
         },
         "authored": {
-            "oid": 43932,
+            "oid": 43934,
             "array_oid": null,
+            "regtype": "authored",
         },
         "comment": {
-            "oid": 43952,
+            "oid": 43954,
             "array_oid": null,
+            "regtype": "comment"
         },
         "post": {
-            "oid": 43942,
+            "oid": 43944,
             "array_oid": null,
+            "regtype": "post"
         },
         "with_timestamps": {
-            "oid": 43927,
+            "oid": 43929,
             "array_oid": null,
+            "regtype": "with_timestamps"
         },
     },
     "sequence": {

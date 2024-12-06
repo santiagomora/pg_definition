@@ -18,15 +18,18 @@ from typing import \
     Optional
 import numpy as np
 import warnings
+from datetime import\
+    datetime,\
+    date as _date,\
+    time
+
 
 # TODO configure flow components runtime dependencies
 _builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('builtin-definition-flow')
 builtin_builder = DefinitionFlowBuilder(_builtin_definition_flow_root)
 
 
-__all__ = ['integer', 'bigint', 'smallint', 'text', 'double', 'real',
-           'byte', 'char', 'timestamp', 'time', 'date', 'boolean',
-           'builtin_instance']
+__all__ = ['integer', 'bigint', 'smallint', 'text', 'double', 'real', 'byte', 'char', 'timestamptz', 'timetz', 'date', 'boolean', 'builtin_instance']
 
 
 class builtin(type):
@@ -37,12 +40,10 @@ class builtin(type):
             raise TypeError(f'Class {cls} doesnt allow multiple bases')
 
         def __new__(cls_, *args, **kwargs) -> Any:
-            with warnings.catch_warnings(action="ignore"):
-                # catches numpy.datetime64 warning when instancing datetime with timezone
-                instance = clsbases[0].__new__(cls_, *args, **kwargs)
-                if hasattr(clsbases[0], '__pg_validate_instance__'):
-                    instance = clsbases[0].__pg_validate_instance__(instance)
-                return cls_.__pg_validate_instance__(instance)
+            instance = clsbases[0].__new__(cls_, *args, **kwargs)
+            if hasattr(clsbases[0], '__pg_validate_instance__'):
+                instance = clsbases[0].__pg_validate_instance__(instance)
+            return cls_.__pg_validate_instance__(instance)
 
         @classmethod
         def __pg_validate_instance__(cls, instance):
@@ -74,7 +75,7 @@ class builtin(type):
                 function=cls.__pg_attempt_to_create_instance__)
 
         def __repr__(self):
-            return f'{self.__class__.__name__}({self})'
+            return str(self)
 
         ret_type: type = super()\
             .__new__(cls, clsname, clsbases,
@@ -174,58 +175,47 @@ class boolean(np.bool, metaclass=builtin):
     pass
 
 
-def _create_from_model_field(cls: type, value: Any, default_unit: str):
+def _create_from_model_field(cls: type, value: Any):
     if isinstance(value, cls):
         return value
-    elif isinstance(value, tuple):
-        return cls(value[0], value[1])
     elif isinstance(value, str):
-        return cls(value, default_unit)
+        return cls.fromisoformat(value)
     raise ValueError(f'Invalid value for {cls.__name__}')
 
 
-# we'll always work with ISO8061 utc timestamps, what will change is
+# we'll always work with ISO8061 utc timestamptzs, what will change is
 # how these representations get stored into the database, we will
 # have to define each function for conversion
-class timestamp(np.datetime64, metaclass=builtin):
-    @classmethod
-    def __pg_create_instance_custom__(
-        cls,
-        value: Any
+class timestamptz(datetime, metaclass=builtin):
+    def __new__(
+        cls, *args, **kwargs
     ):
-        return _create_from_model_field(cls, value, 'us')
+        if isinstance(args[0], str):
+            t: timestamptz = cls.fromisoformat(args[0])
+            args = (t.year, t.month, t.day, t.hour, t.minute, t.second, t.microsecond)
+        return super().__new__(cls, *args, **kwargs)
 
 
-class time(np.datetime64, metaclass=builtin):
-    # time will always be a tuple, as it is possible to specify time units
+class timetz(time, metaclass=builtin):
+    # timetz will always be a tuple, as it is possible to specify timetz units
     # first parameter can be a 'hh?:mm?:ss?,(...)' string or an integer
     def __new__(
-        cls,
-        value: str | int,
-        unit: Literal['h', 'm', 's', 'ms', 'us', 'ns', 'fs', 'as'] = 'us'
+        cls, *args, **kwargs
     ):
-        if unit not in ('h', 'm', 's', 'ms', 'us', 'ns', 'fs', 'as'):
-            raise ValueError('Invalid unit for time')
-        if isinstance(value, str):
-            value = f'1970-01-01T{value}'
-        return super().__new__(cls, value, unit)
-
-    @classmethod
-    def __pg_create_instance_custom__(
-        cls,
-        value: Any
-    ):
-        return _create_from_model_field(cls, value, 'us')
+        if isinstance(args[0], str):
+            t: timetz = cls.fromisoformat(args[0])
+            args = (t.hour, t.minute, t.second, t.microsecond)
+        return super().__new__(cls, *args, **kwargs)
 
 
-class date(np.datetime64, metaclass=builtin):
+class date(_date, metaclass=builtin):
     def __new__(
-        cls,
-        value: str | int
+        cls, *args, **kwargs
     ):
-        return super().__new__(cls, value, 'D')
+        if isinstance(args[0], str):
+            d: date = cls.fromisoformat(args[0])
+            args = (d.year, d.month, d.day)
+        return super().__new__(cls, *args, **kwargs)
 
 
-builtin_instance = Union[integer, bigint, smallint, text, double,
-                            real, byte, char, timestamp, time, date,
-                            boolean]
+builtin_instance = Union[integer, bigint, smallint, text, double, real, byte, char, timestamptz, timetz, date, boolean]

@@ -1,7 +1,3 @@
-from datetime import\
-    datetime,\
-    time,\
-    date
 from numbers import\
     Number
 from .definition.composite import\
@@ -46,17 +42,23 @@ from .definition.builtin import\
     char,\
     double,\
     byte,\
-    timestamp,\
-    time,\
+    timestamptz,\
+    timetz,\
     date,\
     boolean
 from .definition.function import\
     pg_single_result_function,\
     pg_set_returning_function,\
     pg_execute_function
+from datetime import\
+    datetime,\
+    time,\
+    date as _date
+from .adapter_registry import\
+    adapter_registry
 
 
-__all__ = ['composite', 'table', 'table_index_type', 'table_foreign_key_action', 'table_index', 'table_unique_index', 'table_primary_key', 'table_foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamp', 'time', 'date', 'boolean', 'pg_single_result_function', 'pg_set_returning_function', 'pg_execute_function', 'FlowNodeException', 'FlowEndException']
+__all__ = ['composite', 'table', 'table_index_type', 'table_foreign_key_action', 'table_index', 'table_unique_index', 'table_primary_key', 'table_foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamptz', 'timetz', 'date', 'boolean', 'pg_single_result_function', 'pg_set_returning_function', 'pg_execute_function', 'FlowNodeException', 'FlowEndException', 'adapter_registry']
 
 
 check.type_compatibility.register(bigint, Number)
@@ -64,10 +66,10 @@ check.type_compatibility.register(integer, Number)
 check.type_compatibility.register(smallint, Number)
 check.type_compatibility.register(double, Number)
 check.type_compatibility.register(real, Number)
-check.type_compatibility.register(time, time)
-check.type_compatibility.register(date, date)
+check.type_compatibility.register(timetz, time)
+check.type_compatibility.register(date, _date)
 check.type_compatibility.register(text, str)
-check.type_compatibility.register(timestamp, datetime)
+check.type_compatibility.register(timestamptz, datetime)
 check.type_compatibility.register(boolean, bool)
 check.type_compatibility.register(composite, composite)
 

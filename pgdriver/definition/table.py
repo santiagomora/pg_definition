@@ -21,6 +21,7 @@ from .common.flow import\
     DefinitionFlowBuilder
 from .common.model import\
     table,\
+    composite,\
     table_definition_flow_root,\
     ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
@@ -28,8 +29,6 @@ from .common.model import\
     ModelDiscardMetaInstancesFromInheritedFieldsNode,\
     ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
     ModelExtractCheckConstraintsNode
-from .composite import\
-    composite
 from .enums import\
     enums
 from .builtin import\

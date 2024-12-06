@@ -4,8 +4,8 @@ from pgdriver import\
     text,\
     double,\
     byte,\
-    timestamp,\
-    time,\
+    timestamptz,\
+    timetz,\
     date,\
     boolean,\
     char,\
@@ -36,8 +36,8 @@ def test_builtin_definition_is_correctly_formed() -> None:
     test_builtin_definition_inner(double)
     test_builtin_definition_inner(byte)
     test_builtin_definition_inner(char)
-    test_builtin_definition_inner(timestamp)
-    test_builtin_definition_inner(time)
+    test_builtin_definition_inner(timestamptz)
+    test_builtin_definition_inner(timetz)
     test_builtin_definition_inner(date)
     test_builtin_definition_inner(boolean)
 
@@ -212,47 +212,47 @@ def test_builtin_domain_takes_default_value() -> None:
     assert definition['default_value'].default._lit == 2
 
 
-def test_builtin_timestamp_correctly_instantiated() -> None:
-    tm = time('10:50')
-    assert str(tm) == '1970-01-01T10:50:00.000000'
+def test_builtin_timestamptz_correctly_instantiated() -> None:
+    tm = timetz('10:50')
+    assert str(tm) == '10:50:00'
     try:
         dt = date('10:50')
         assert False
     except ValueError as e:
-        assert str(e) == 'Error parsing datetime string "10:50" at position 2'
+        assert str(e) == 'Invalid isoformat string: \'10:50\''
     try:
-        dt = timestamp('10:50')
+        dt = timestamptz('10:50')
         assert False
     except ValueError as e:
-        assert str(e) == 'Error parsing datetime string "10:50" at position 2'
+        assert str(e) == 'Invalid isoformat string: \'10:50\''
     dt = date('2020-10-10')
     assert str(dt) == '2020-10-10'
-    dt = date('2020-10-10T10:50:00.000')
+    dt = date('2020-10-10')
     assert str(dt) == '2020-10-10'
-    tp = timestamp('2024-11-22T15:30:00+03:00')
-    assert str(tp) == '2024-11-22T12:30:00'
+    tp = timestamptz('2024-11-22 15:30:00+03:00')
+    assert str(tp) == '2024-11-22 15:30:00'
 
 
-def test_builtin_timestamp_checks() -> None:
+def test_builtin_timestamptz_checks() -> None:
     @with_check(name='test_domain0__ge2024',
                    predicate=this() >= literal('2024-10-10T10:20'))
-    class domain0(timestamp):
+    class domain0(timestamptz):
         pass
     try:
         domain0('2024-10-09T10:19')
         assert False
     except ValueError as e:
-        assert str(e) == 'test_domain0__ge2024: constraint validation failed for value "2024-10-09T10:19"'
+        assert str(e) == 'test_domain0__ge2024: constraint validation failed for value "2024-10-09 10:19:00"'
 
     @with_check(name='test_domain0__ge10_10',
                    predicate=this() >= literal('10:10'))
-    class domain1(time):
+    class domain1(timetz):
         pass
     try:
         domain1('10:09')
         assert False
     except ValueError as e:
-        assert str(e) == 'test_domain0__ge10_10: constraint validation failed for value "1970-01-01T10:09:00.000000"'
+        assert str(e) == 'test_domain0__ge10_10: constraint validation failed for value "10:09:00"'
 
     @with_check(name='test_domain0__ge2024',
                    predicate=this() >= literal('2024-10-10'))

@@ -2,8 +2,8 @@ from pgdriver import\
     smallint,\
     text,\
     composite,\
-    timestamp,\
-    time,\
+    timestamptz,\
+    timetz,\
     date,\
     with_comment,\
     comment,\
@@ -337,23 +337,23 @@ def test_composite_support_complex_type_creation() -> None:
 
     class test1(composite):
         f1: smallint
-        f2: timestamp
-        f3: time
+        f2: timestamptz
+        f3: timetz
         f4: date
 
     class test2(composite):
         f1: test1
         f2: smallint
 
-    d = test2(f1={'f1': 1, 'f2': ('2020-10-11', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
+    d = test2(f1={'f1': 1, 'f2': '2020-10-11', 'f3': '10:20:01', 'f4': '2020-11-11'}, f2=1)
     assert isinstance(d.f1.f1, smallint)
-    assert isinstance(d.f1.f2, np.datetime64)
-    assert isinstance(d.f1.f3, np.datetime64)
-    assert isinstance(d.f1.f4, np.datetime64)
+    assert isinstance(d.f1.f2, timestamptz)
+    assert isinstance(d.f1.f3, timetz)
+    assert isinstance(d.f1.f4, date)
     assert isinstance(d.f2, smallint)
 
     @with_check(name='constrained_datetime_check', predicate=this() > literal('2020-10-10'))
-    class constrained_datetime(timestamp):
+    class constrained_datetime(timestamptz):
         pass
 
     class constrained_date(date):
@@ -362,26 +362,27 @@ def test_composite_support_complex_type_creation() -> None:
     class test3(composite):
         f1: smallint
         f2: constrained_datetime
-        f3: time
+        f3: timetz
         f4: constrained_date
 
     class test4(composite):
         f1: test3
         f2: smallint
 
-    d = test4(f1={'f1': 1, 'f2': ('2020-10-11', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
+    d = test4(f1={'f1': 1, 'f2': '2020-10-11', 'f3': '10:20:01', 'f4': '2020-11-11'}, f2=1)
     assert isinstance(d.f1.f1, smallint)
-    assert isinstance(d.f1.f2, np.datetime64)
-    assert isinstance(d.f1.f3, np.datetime64)
-    assert isinstance(d.f1.f4, np.datetime64)
+    assert isinstance(d.f1.f2, constrained_datetime)
+    assert isinstance(d.f1.f3, timetz)
+    assert isinstance(d.f1.f4, constrained_date)
     assert isinstance(d.f2, smallint)
 
     try:
-        d = test4(f1={'f1': 1, 'f2': ('2020-10-09', 'ms'), 'f3': ('10:20:01', 'us'), 'f4': '2020-11-11'}, f2=1)
+        d = test4(f1={'f1': 1, 'f2': '2020-10-09', 'f3': '10:20:01', 'f4': '2020-11-11'}, f2=1)
     except pydantic_core._pydantic_core.ValidationError as e:
+        print(str(e))
         assert str(e) == '1 validation error for test4\n\
 f1.f2\n\
-  Value error, constrained_datetime_check: constraint validation failed for value "2020-10-09T00:00:00.000" [type=value_error, input_value=(\'2020-10-09\', \'ms\'), input_type=tuple]\n\
+  Value error, constrained_datetime_check: constraint validation failed for value "2020-10-09 00:00:00" [type=value_error, input_value=\'2020-10-09\', input_type=str]\n\
     For further information visit https://errors.pydantic.dev/2.8/v/value_error'
 
 

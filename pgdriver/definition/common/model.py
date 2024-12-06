@@ -47,6 +47,35 @@ class _PGBaseModel(BaseModel, metaclass=_PGBaseModelMeta):
             parent_cls.__pydantic_validator__.validate_python(data, self_instance=self)
         return super().__init__(**data)
 
+    def as_tuple(
+        self, type_oid: dict[type, int], fields: dict[int, list[str]]
+    ) -> tuple[Any, ...]:
+        res = []
+        for name in fields[type_oid[self.__class__]]:
+            value = getattr(self, name)
+            if hasattr(value, 'as_tuple'):
+                res.append(value.as_tuple(type_oid, fields))
+            else:
+                res.append(value)
+        return tuple(res)
+
+    @classmethod
+    def from_tuple(
+        cls, type_oid: dict[type, int], fields: dict[int, list[str]],
+        oid_field_types: dict[int, list[int]], data: tuple[Any, ...]
+    ) -> dict[str, Any]:
+        oid_type: dict[int, type] = {type_oid[k]: k for k in type_oid}
+        res: dict[str, Any] = {}
+        cls_fields: list[str] = fields[type_oid[cls]]
+        cls_field_types: list[int] = oid_field_types[type_oid[cls]]
+        for ix in range(0, len(data)):
+            field_cls: type = oid_type[cls_field_types[ix]]
+            if hasattr(field_cls, 'from_tuple'):
+                res[cls_fields[ix]] = field_cls.from_tuple(type_oid, fields, oid_field_types, data[ix])
+            else:
+                res[cls_fields[ix]] = field_cls(data[ix])
+        return res
+
 
 class composite(_PGBaseModel):
     pass

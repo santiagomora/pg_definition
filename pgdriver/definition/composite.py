@@ -11,6 +11,7 @@ from .common.flow import\
 from .common.model import\
     composite_definition_flow_root,\
     composite,\
+    table,\
     ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
     ModelValidateFieldsBaseTypeNode,\
@@ -53,7 +54,7 @@ workflow than a composite type.
 class _CompositeValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
     def __init__(self):
         super().__init__('composite-validate-fields-base-type-node',
-                         type_subclass=[enums, builtin, composite],
+                         type_subclass=[enums, builtin, composite, table],
                          type_instance=[builtin])
 
 
