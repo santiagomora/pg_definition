@@ -15,8 +15,8 @@ from pgdriver import\
     literal,\
     smallint_sequence,\
     this,\
-    FlowEndException,\
-    FlowNodeException,\
+    FlowException,\
+    NodeException,\
     table_index_type,\
     table_foreign_key_action
 from typing_extensions import\
@@ -103,8 +103,8 @@ order (MRO) for bases table, test1'
         class test2(table, test1):
             field_1: smallint
             field_2: text
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-consistent-base-classes-node')
         assert error is not None
         assert str(error) == f'Cant define {table} as base class if <class \'test_table_definition.test_definition_flow_detects_inconsistent_base_classes_and_fields.<locals>.test2\'> is set to inherit more than one base class, Inherited class <class \'test_table_definition.test_definition_flow_detects_inconsistent_base_classes_and_fields.<locals>.test1\'> must be a subclass of {table}'
@@ -116,8 +116,8 @@ order (MRO) for bases table, test1'
         class test2(test1):
             field_1: text
 
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-consistent-base-classes-node')
         assert error is not None
         assert str(error) == f'Field field_1 type conflict. Declared in multiple base classes: {smallint}, {text}' or \
@@ -129,8 +129,8 @@ def test_definition_flow_detects_empty_table_definition() -> None:
         class test1(table):
             pass
 
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-existing-columns-node')
         assert error is not None
         assert str(error) == "Class <class 'test_table_definition.test_definition_flow_detects_empty_table_definition.<locals>.test1'> must define columns."
@@ -146,8 +146,8 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
         class test1(table):
             field: Annotated[integer, table_primary_key(name='test'), table_primary_key(name='test2')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
         assert str(error) == f'Metadata type {table_primary_key} can only appear once in field declaration'
@@ -156,8 +156,8 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
         class test1(table):
             field: Annotated[integer, default_value(1), default_value(2)]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
         assert str(error) == f'Metadata type {default_value} can only appear once in field declaration'
@@ -179,8 +179,8 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
         class test1(table):
             field: Annotated[smallint, default_nextval(seq=test_seq), default_nextval(seq=test_seq)]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
         assert str(error) == f'Metadata type {default_nextval} can only appear once in field declaration'
@@ -189,8 +189,8 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
         class test1(table):
             field: Annotated[smallint, comment('test'), comment('tes2')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
         assert str(error) == f'Metadata type {comment} can only appear once in field declaration'
@@ -209,8 +209,8 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
                                                   other_class=test2,
                                                   other_class_column_name='field1'),]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
         assert str(error) == f'Metadata type {table_foreign_key} can only appear once in field declaration'
@@ -226,8 +226,8 @@ def test_definition_flow_detects_mutually_exclusive_metadata_types() -> None:
                               default_nextval(seq=test_seq)]
 
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-mutually-exclusive-metadata-node')
         assert error is not None
         assert str(error) == f'Field field1 described by two mutually exclusive metadata instances: {default_nextval(seq=test_seq)} and {default_value(2)}'
@@ -266,8 +266,8 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
             field1: Annotated[smallint,
                               test2('test')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-restricted-metadata-types-node')
         assert error is not None
         assert str(error) == "Invalid metadata type <class 'test_table_definition.test_definition_flow_detects_invalid_metadata_types.<locals>.test2'> in field1 declaration"
@@ -374,8 +374,8 @@ def test_foreign_key_definition_correctly_extracted() -> None:
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-extract-foreign-keys-node')
         assert error is not None
         print(str(error))
@@ -397,8 +397,8 @@ def test_foreign_key_definition_correctly_extracted() -> None:
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-extract-foreign-keys-node')
         assert error is not None
         assert str(error) == "Foreign key test2 error: Other class <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'> must define any ('unique_indexes', 'primary_key') constraint over referenced columns {'t6_field1', 't6_field2'}" or \
@@ -420,8 +420,8 @@ def test_foreign_key_definition_correctly_extracted() -> None:
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-extract-foreign-keys-node')
         assert error is not None
         assert str(error) == "Foreign key test2 error: Other class <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'> must define any ('unique_indexes', 'primary_key') constraint over referenced columns {'t6_field1', 't6_field2'}" or \
@@ -438,8 +438,8 @@ def test_primary_key_definition_correctly_extracted() -> None:
             t1_field2: Annotated[smallint,
                                  table_primary_key(name='test2')]
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-extract-primary-key-node')
         assert error is not None
         assert str(error) == "Multiple primary keys detected for class <class 'test_table_definition.test_primary_key_definition_correctly_extracted.<locals>.test1'>"
@@ -520,8 +520,8 @@ def test_index_definition_correctly_extracted() -> None:
             t2_field1: Annotated[smallint,
                                 table_index(name='test'),
                                 table_index(name='test')]
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
         assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type table_index sharing name test.'
@@ -576,8 +576,8 @@ def test_unique_index_definition_correctly_extracted() -> None:
             t2_field1: Annotated[smallint,
                                 table_unique_index(name='test'),
                                 table_unique_index(name='test')]
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
         assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type table_unique_index sharing name test.'
@@ -741,8 +741,8 @@ t4_field1\n\
             t2_field1: Annotated[smallint,
                                  check(name='test', predicate=this() > literal(0)),
                                  check(name='test', predicate=this() > literal(0))]
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('table-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
         assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type check sharing name test.'

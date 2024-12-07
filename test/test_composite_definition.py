@@ -11,8 +11,8 @@ from pgdriver import\
     with_default_value,\
     with_check,\
     default_value,\
-    FlowEndException,\
-    FlowNodeException,\
+    FlowException,\
+    NodeException,\
     literal,\
     field,\
     this,\
@@ -21,7 +21,6 @@ from typing_extensions import\
     Annotated
 from typing import\
     Optional
-import numpy as np
 import pydantic_core
 import datetime
 
@@ -56,8 +55,8 @@ def test_composite_flow_detects_non_existing_attribute() -> None:
     try:
         class test(composite):
             pass
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-extract-attributes-node')
         assert error is not None
         assert str(error) == "Class <class 'test_composite_definition.\
@@ -85,8 +84,8 @@ def test_composite_flow_detects_invalid_check_in_definition() -> None:
             field_1: Annotated[smallint,
                                check(name='domain_greater_than_0',
                                         predicate=this() >= literal(0))]
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
         assert error is not None
         assert str(error) == f'Invalid metadata type {check} in field_1 declaration'
@@ -103,8 +102,8 @@ def test_composite_flow_detects_invalid_attribute_type() -> None:
             field_6: datetime.time
             field_7: datetime.date
             field_8: bool
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-fields-base-type-node')
         assert error is not None
         field_errors: list[str] = [
@@ -165,8 +164,8 @@ def test_composite_domain_definition_flow_doesnt_allow_additional_fields() -> No
 
         class domain1(test):
             field_2: text
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-declared-attributes-node')
         assert error is not None
         assert str(error) == 'Additional attribute field_2 detected in composite domain definition'
@@ -181,8 +180,8 @@ def test_composite_domain_definition_flow_doesnt_allow_field_type_change() -> No
             field_1: text
 
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-declared-attributes-node')
         assert error is not None
         assert str(error) == f'Composite domain attribute type must match type in parent definition. Expected {text} to be {smallint}'
@@ -272,8 +271,8 @@ def test_composite_domain_subclass_doesnt_inherit_comments() -> None:
         class domain1(test):
             pass
         assert True
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-restricted-metadata-types-node')
         assert error is not None
         if str(error) == "Invalid metadata type <class 'pgdriver.definition.definition.meta.comment'> in field_1 declaration":
@@ -300,8 +299,8 @@ def test_composite_flow_detects_invalid_metadata() -> None:
         class domain1(test):
             field_1: Annotated[smallint,
                                comment('test')]
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-domain-validate-restricted-metadata-types-node')
         assert error is not None
         assert str(error) == f'Invalid metadata type {comment} in field_1 declaration'
@@ -311,8 +310,8 @@ def test_composite_flow_detects_invalid_metadata() -> None:
                                check(name='field1_greater_than_0',
                                         predicate=this() >= literal(0))]
 
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('composite-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
         assert error is not None
         assert str(error) == "Invalid metadata type <class 'pgdriver.definition.definition.meta.check'> in field_1 declaration"

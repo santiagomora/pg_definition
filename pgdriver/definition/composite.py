@@ -3,21 +3,22 @@ from typing import\
 from .common.flow import\
     SingleChoiceDefinitionFlowNode,\
     FlowAccumulator,\
-    FlowEndException,\
-    FlowNodeException,\
+    FlowException,\
+    NodeException,\
     DefinitionFlowNode,\
-    DefinitionFlowBuilder,\
-    CommonDetermineIfTargetIsDomainNode
+    DefinitionFlowBuilder
 from .common.model import\
     composite_definition_flow_root,\
     composite,\
     table,\
-    ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
-    ModelValidateFieldsBaseTypeNode,\
     ModelDiscardMetaInstancesFromInheritedFieldsNode,\
     ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
     ModelExtractCheckConstraintsNode
+from .common.node import\
+    CommonDetermineIfTargetIsDomainNode,\
+    CommonValidateRestrictedMetadataTypesNode,\
+    CommonValidateFieldsBaseTypeNode
 from .builtin import\
     builtin
 from .enums import\
@@ -25,15 +26,11 @@ from .enums import\
 from .meta import\
     check,\
     comment,\
-    LogicOperand,\
     OperandDefinitionContext
 from .common.inspection import\
     extract_definition_fields,\
     get_field_parent_definition,\
-    extract_first_instance_from_field_metadata,\
-    extract_by_instance_type_from_model_fields_info
-from functools import\
-    reduce
+    extract_first_instance_from_field_metadata
 
 
 composite_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(composite_definition_flow_root)
@@ -51,14 +48,14 @@ workflow than a composite type.
 """
 
 
-class _CompositeValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
+class _CompositeValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
     def __init__(self):
         super().__init__('composite-validate-fields-base-type-node',
                          type_subclass=[enums, builtin, composite, table],
                          type_instance=[builtin])
 
 
-class _CompositeValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
+class _CompositeValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-restricted-metadata-types-node',
                          types=[comment])
@@ -96,7 +93,7 @@ class _CompositeExtractAttributesDefinitionNode(SingleChoiceDefinitionFlowNode,
                 'type': info.annotation,
                 'comment': extract_first_instance_from_field_metadata(info, comment)}
         if len(attributes) <= 0:
-            raise FlowNodeException(self.name, [f'Class {target} must declare attributes.'])
+            raise NodeException(self.name, [f'Class {target} must declare attributes.'])
         accumulator.add_definition('attributes', attributes)
 
 
@@ -126,10 +123,10 @@ class _CompositeDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNod
                 return self._nodes['composite-domain-validate-restricted-metadata-types-node']
             return self._nodes['composite-validate-restricted-metadata-types-node']
         except KeyError as e:
-            raise FlowEndException(f'Choice not found in node {self.name}: {str(e)}')
+            raise FlowException(f'Choice not found in node {self.name}: {str(e)}')
 
 
-class _CompositeDomainValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
+class _CompositeDomainValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-domain-validate-restricted-metadata-types-node',
                          types=[check])
@@ -150,9 +147,9 @@ class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
         for name in target.model_fields:
             field_in_parent: Optional[FieldInfo] = get_field_parent_definition(name, target)
             if field_in_parent is None:
-                raise FlowNodeException(self.name, [f'Additional attribute {name} detected in composite domain definition'])
+                raise NodeException(self.name, [f'Additional attribute {name} detected in composite domain definition'])
             elif field_in_parent.annotation != target.model_fields[name].annotation:
-                raise FlowNodeException(self.name, [f'Composite domain attribute type must match type in parent definition. Expected {target.model_fields[name].annotation} to be {field_in_parent.annotation}'])
+                raise NodeException(self.name, [f'Composite domain attribute type must match type in parent definition. Expected {target.model_fields[name].annotation} to be {field_in_parent.annotation}'])
 
 
 class _CompositeDomainValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):

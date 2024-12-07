@@ -10,9 +10,10 @@ from .common.flow import\
     SingleChoiceDefinitionFlowNode,\
     DefinitionFlowNode,\
     DefinitionFlowBuilder,\
-    FlowEndException,\
-    FlowNodeException,\
-    execute_definition_flow,\
+    FlowException,\
+    NodeException,\
+    execute_definition_flow
+from .common.node import\
     CommonDetermineIfTargetIsDomainNode
 
 
@@ -35,10 +36,10 @@ class enums_builtin(EnumMeta):
                     clsdict[member.name] = member.value
         except NameError:
             pass
-        ret_type: type = super()\
+        rettype: type = super()\
             .__new__(cls, clsname, clsbases, clsdict)
-        execute_definition_flow(ret_type, _enums_definition_flow_root)
-        return ret_type
+        execute_definition_flow(rettype, _enums_definition_flow_root)
+        return rettype
 
     @staticmethod
     def _check_for_existing_members_(cls, bases):
@@ -60,7 +61,7 @@ class _EnumDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNode):
                 return self._nodes['enums-domain-validate-members-node']
             return self._nodes['enums-validate-members-node']
         except KeyError as e:
-            raise FlowEndException(f'Choice not found in node {self.name}: {str(e)}')
+            raise FlowException(f'Choice not found in node {self.name}: {str(e)}')
 
 
 class _EnumValidateMembersNode(SingleChoiceDefinitionFlowNode):
@@ -69,7 +70,7 @@ class _EnumValidateMembersNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         if target._member_names_ == []:
-            raise FlowNodeException(self.name, [f'{target} enums must define own members if it inherits from {enums}'])
+            raise NodeException(self.name, [f'{target} enums must define own members if it inherits from {enums}'])
 
 
 class _EnumExtractMembersNode(SingleChoiceDefinitionFlowNode):
@@ -120,7 +121,7 @@ class _EnumDomainValidateMembersNode(SingleChoiceDefinitionFlowNode):
             if member.name not in target_base._member_names_:
                 errors.append(f'{target} enums cant define own member {member.name} if it inherits from a {enums} subclass')
         if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
+            raise NodeException(self.name, errors)
 
 
 class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):

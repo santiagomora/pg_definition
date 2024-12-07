@@ -1,6 +1,5 @@
 from typing import\
     Any,\
-    Literal,\
     Union
 from pydantic_core import\
     core_schema
@@ -17,7 +16,6 @@ from .common.flow import\
 from typing import \
     Optional
 import numpy as np
-import warnings
 from datetime import\
     datetime,\
     date as _date,\
@@ -77,7 +75,7 @@ class builtin(type):
         def __repr__(self):
             return str(self)
 
-        ret_type: type = super()\
+        rettype: type = super()\
             .__new__(cls, clsname, clsbases,
                      {'__new__': __new__,
                       '__repr__': __repr__,
@@ -86,8 +84,8 @@ class builtin(type):
                       '__pg_attempt_to_create_instance__': __pg_attempt_to_create_instance__,
                       '__pg_create_instance__': __pg_create_instance__,
                       '__pg_validate_instance__': __pg_validate_instance__} | clsdict)
-        execute_definition_flow(ret_type, _builtin_definition_flow_root)
-        return ret_type
+        execute_definition_flow(rettype, _builtin_definition_flow_root)
+        return rettype
 
 
 class _BuiltinDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):

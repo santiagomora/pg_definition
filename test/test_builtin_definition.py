@@ -15,8 +15,8 @@ from pgdriver import\
     comment,\
     default_value,\
     with_default_value,\
-    FlowEndException,\
-    FlowNodeException,\
+    FlowException,\
+    NodeException,\
     literal,\
     this,\
     field

@@ -3,7 +3,6 @@ from typing import\
     Generic,\
     Optional,\
     TypeVar,\
-    get_args,\
     Any
 from dataclasses import\
     dataclass
@@ -17,18 +16,19 @@ from pydantic.fields import\
 from .common.flow import\
     SingleChoiceDefinitionFlowNode,\
     FlowAccumulator,\
-    FlowNodeException,\
+    NodeException,\
     DefinitionFlowBuilder
 from .common.model import\
     table,\
     composite,\
     table_definition_flow_root,\
-    ModelValidateRestrictedMetadataTypesNode,\
     ModelValidateUniqueMetadataTypesNode,\
-    ModelValidateFieldsBaseTypeNode,\
     ModelDiscardMetaInstancesFromInheritedFieldsNode,\
     ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
     ModelExtractCheckConstraintsNode
+from .common.node import\
+    CommonValidateRestrictedMetadataTypesNode,\
+    CommonValidateFieldsBaseTypeNode
 from .enums import\
     enums
 from .builtin import\
@@ -36,13 +36,10 @@ from .builtin import\
 from .common.inspection import\
     extract_by_instance_type_from_model_fields_info,\
     aggregate,\
-    ordered_set_accumulator,\
     set_accumulator,\
     key_by,\
     extract_first_instance_from_field_metadata,\
-    extract_inherited_fields,\
     is_optional,\
-    extract_by_instance_type_from_field_info,\
     extract_type,\
     extract_definition_fields
 from .meta import\
@@ -188,7 +185,7 @@ class _TableValidateConsistentBaseClassesNode(SingleChoiceDefinitionFlowNode):
                 base_cls_str: str = ', '.join([str(f) for f in field_types[field]])
                 errors.append(f'Field {field} type conflict. Declared in multiple base classes: {base_cls_str}')
         if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
+            raise NodeException(self.name, errors)
 
 
 class _TableValidateExistingColumnsNode(SingleChoiceDefinitionFlowNode):
@@ -201,7 +198,7 @@ class _TableValidateExistingColumnsNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         if len(target.model_fields.keys()) <= 0:
-            raise FlowNodeException(self.name, [f'Class {target} must define columns.'])
+            raise NodeException(self.name, [f'Class {target} must define columns.'])
 
 
 class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode):
@@ -223,7 +220,7 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
                 if tp1inst is not None and tp2inst is not None:
                     errors.append(f'Field {field} described by two mutually exclusive metadata instances: {repr(tp2inst)} and {repr(tp1inst)}')
         if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
+            raise NodeException(self.name, errors)
 
 
 class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
@@ -232,7 +229,7 @@ class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSam
                          types=[check, table_unique_index, table_index])
 
 
-class _TableValidateRestrictedMetadataTypesNode(ModelValidateRestrictedMetadataTypesNode):
+class _TableValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-restricted-metadata-types-node',
                          types=[table_foreign_key, table_primary_key, table_index,
@@ -247,7 +244,7 @@ class _TableValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode
                                 default_nextval, comment])
 
 
-class _TableValidateFieldsBaseTypeNode(ModelValidateFieldsBaseTypeNode):
+class _TableValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
     def __init__(self):
         super().__init__('table-validate-fields-base-type-node',
                          type_subclass=[enums, builtin, composite],
@@ -292,7 +289,7 @@ class _TableExtractIndexesNode(SingleChoiceDefinitionFlowNode,
             definition: list[dict[str, Any]] = [aggregate(grouped_by_name[ix_name], {'column_name': set_accumulator}) for ix_name in grouped_by_name]
             accumulator.add_definition('indexes', definition if len(definition) > 0 else None)
         except Exception as e:
-            raise FlowNodeException(self.name, [str(e)])
+            raise NodeException(self.name, [str(e)])
 
 
 class _TableExtractUniqueIndexesNode(SingleChoiceDefinitionFlowNode,
@@ -315,7 +312,7 @@ class _TableExtractUniqueIndexesNode(SingleChoiceDefinitionFlowNode,
             definition: list[dict[str, Any]] = [aggregate(grouped_by_name[uix_name], {'column_name': set_accumulator}) for uix_name in grouped_by_name]
             accumulator.add_definition('unique_indexes', definition if len(definition) > 0 else None)
         except Exception as e:
-            raise FlowNodeException(self.name, [str(e)])
+            raise NodeException(self.name, [str(e)])
 
 
 class _TableExtractPrimaryKeyNode(SingleChoiceDefinitionFlowNode,
@@ -340,7 +337,7 @@ class _TableExtractPrimaryKeyNode(SingleChoiceDefinitionFlowNode,
             elif len(definition) == 1:
                 accumulator.add_definition('primary_key', definition[0])
         except Exception as e:
-            raise FlowNodeException(self.name, [str(e)])
+            raise NodeException(self.name, [str(e)])
 
 
 class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
@@ -373,7 +370,7 @@ class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
             if len(constraints) == 0 or not any([const['column_name'] == other_class_column_names for const in constraints]):
                 errors.append(f'Foreign key {fk["name"]} error: Other class {fk["other_class"]} must define any {constraint_names} constraint over referenced columns {other_class_column_names}')
         if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
+            raise NodeException(self.name, errors)
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         fks: list[dict[str, Any]] = [fk for _, fk in extract_by_instance_type_from_model_fields_info(
@@ -394,10 +391,10 @@ class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
                     'constrained_column_pairs': set_accumulator}) for fk_name in grouped_by_name]
             self._check_for_other_class_constraints(definition, ('unique_indexes', 'primary_key', ))
             accumulator.add_definition('foreign_keys', definition if len(definition) > 0 else None)
-        except FlowNodeException as e:
+        except NodeException as e:
             raise e
         except Exception as e:
-            raise FlowNodeException(self.name, [str(e)])
+            raise NodeException(self.name, [str(e)])
 
 
 class _TableExtractCheckConstraintsNode(ModelExtractCheckConstraintsNode):

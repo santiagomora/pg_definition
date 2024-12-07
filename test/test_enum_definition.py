@@ -5,8 +5,8 @@ from pgdriver import\
     with_comment,\
     with_default_value,\
     comment,\
-    FlowEndException,\
-    FlowNodeException,\
+    FlowException,\
+    NodeException,\
     default_value
 from typing import\
     Optional
@@ -57,8 +57,8 @@ def test_enums_domain_definition_flow_executes_correctly() -> None:
         class test1(test0):
             FIELD1 = auto()
         assert False
-    except FlowEndException as e:
-        error: Optional[FlowNodeException] = e.get_error('enums-definition-flow',
+    except FlowException as e:
+        error: Optional[NodeException] = e.get_error('enums-definition-flow',
                                                          'enums-domain-validate-members-node')
         assert error is not None
         assert str(error) == "<enum 'test1'> enums cant define own member FIELD1 if it inherits from a <enum 'enums'> subclass"

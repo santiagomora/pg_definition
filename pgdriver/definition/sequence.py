@@ -6,7 +6,7 @@ from .common.flow import\
     RootDefinitionFlowNode,\
     SingleChoiceDefinitionFlowNode,\
     DefinitionFlowBuilder,\
-    FlowNodeException,\
+    NodeException,\
     execute_definition_flow
 from .builtin import\
     bigint,\
@@ -35,10 +35,10 @@ class sequence(builtin):
                 raise TypeError(f'Class {clsname} must be a subclass of any of these classes {allowed_bases}')
         except NameError:
             pass
-        ret_type: type = super()\
+        rettype: type = super()\
             .__new__(cls, clsname, clsbases, clsdict)
-        execute_definition_flow(ret_type, _sequence_definition_flow_root)
-        return ret_type
+        execute_definition_flow(rettype, _sequence_definition_flow_root)
+        return rettype
 
 
 class _SequenceValidateBaseClassesClassNode(SingleChoiceDefinitionFlowNode):
@@ -51,7 +51,7 @@ class _SequenceValidateBaseClassesClassNode(SingleChoiceDefinitionFlowNode):
             base_cls_count[base_cls] = base_cls_count.get(base_cls, 0) + 1
         appearance_count = sum([base_cls_count.get(tp, 0) for tp in (integer, bigint, smallint, )])
         if appearance_count > 1:
-            raise FlowNodeException(f'Sequence cant inherit from more than one {integer}, {bigint} or {smallint}')
+            raise NodeException(f'Sequence cant inherit from more than one {integer}, {bigint} or {smallint}')
 
 
 class _SequenceExtractBaseTypeNode(SingleChoiceDefinitionFlowNode):

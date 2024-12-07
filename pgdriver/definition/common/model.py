@@ -3,7 +3,7 @@ from .flow import\
     execute_definition_flow,\
     SingleChoiceDefinitionFlowNode,\
     FlowAccumulator,\
-    FlowNodeException
+    NodeException
 from pydantic import\
     BaseModel
 from ..meta import\
@@ -41,68 +41,19 @@ class _PGBaseModelMeta(type(BaseModel)):
         return rettype
 
 
-class _PGBaseModel(BaseModel, metaclass=_PGBaseModelMeta):
+class base_model(BaseModel, metaclass=_PGBaseModelMeta):
     def __init__(self, **data: Any) -> None:
         for parent_cls in reversed(self.__class__.mro()[1:-4]):
             parent_cls.__pydantic_validator__.validate_python(data, self_instance=self)
         return super().__init__(**data)
 
-    def as_tuple(
-        self, type_oid: dict[type, int], fields: dict[int, list[str]]
-    ) -> tuple[Any, ...]:
-        res = []
-        for name in fields[type_oid[self.__class__]]:
-            value = getattr(self, name)
-            if hasattr(value, 'as_tuple'):
-                res.append(value.as_tuple(type_oid, fields))
-            else:
-                res.append(value)
-        return tuple(res)
 
-    @classmethod
-    def from_tuple(
-        cls, type_oid: dict[type, int], fields: dict[int, list[str]],
-        oid_field_types: dict[int, list[int]], data: tuple[Any, ...]
-    ) -> dict[str, Any]:
-        oid_type: dict[int, type] = {type_oid[k]: k for k in type_oid}
-        res: dict[str, Any] = {}
-        cls_fields: list[str] = fields[type_oid[cls]]
-        cls_field_types: list[int] = oid_field_types[type_oid[cls]]
-        for ix in range(0, len(data)):
-            field_cls: type = oid_type[cls_field_types[ix]]
-            if hasattr(field_cls, 'from_tuple'):
-                res[cls_fields[ix]] = field_cls.from_tuple(type_oid, fields, oid_field_types, data[ix])
-            else:
-                res[cls_fields[ix]] = field_cls(data[ix])
-        return res
-
-
-class composite(_PGBaseModel):
+class composite(base_model):
     pass
 
 
-class table(_PGBaseModel):
+class table(base_model):
     pass
-
-
-class ModelValidateRestrictedMetadataTypesNode(SingleChoiceDefinitionFlowNode):
-    """
-    Metadata in fields are restricted to the passed instances
-    """
-
-    def __init__(self, name: str, *, types: list[type]):
-        super().__init__(name)
-        self._restricted = types
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        errors: list[str] = []
-        for name, info in extract_definition_fields(target):
-            for meta in info.metadata:
-                meta_type: type = type(meta)
-                if meta_type not in self._restricted:
-                    errors.append(f'Invalid metadata type {meta_type} in {name} declaration')
-        if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
 
 
 class ModelValidateUniqueMetadataTypesNode(SingleChoiceDefinitionFlowNode):
@@ -126,43 +77,7 @@ class ModelValidateUniqueMetadataTypesNode(SingleChoiceDefinitionFlowNode):
                 if appearances > 1:
                     errors.append(f'Metadata type {unique} can only appear once in {name} declaration')
         if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
-
-
-class ModelValidateFieldsBaseTypeNode(SingleChoiceDefinitionFlowNode):
-    """
-    We must be sure that base type of fields will have a postgres representation
-    """
-
-    def __init__(self, name: str, *, type_subclass: list[type],
-                 type_instance: list[type]) -> None:
-        super().__init__(name)
-        self._type_subclass = type_subclass
-        self._type_instance = type_instance
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        # mira el type base del campo y valida que este entre los requeridos
-        errors: list[str] = []
-        for name, info in extract_definition_fields(target):
-            is_subclass_of_required: bool = False
-            for required in self._type_subclass:
-                if issubclass(extract_type(info.annotation), required):
-                    is_subclass_of_required = True
-            is_instance_of_required: bool = False
-            if not is_subclass_of_required:
-                for required in self._type_instance:
-                    if isinstance(extract_type(info.annotation), required):
-                        is_instance_of_required = True
-            if is_subclass_of_required or is_instance_of_required:
-                continue
-            elif not is_instance_of_required:
-                super_instances_str: str = ', '.join([str(e) for e in self._type_instance])
-                errors.append(f'Field {name} type must be a subclass of {super_instances_str}')
-            else:
-                super_classes_str: str = ', '.join([str(e) for e in self._type_subclass])
-                errors.append(f'Field {name} type must be an instance of {super_classes_str}')
-        if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
+            raise NodeException(self.name, errors)
 
 
 class ModelDiscardMetaInstancesFromInheritedFieldsNode(SingleChoiceDefinitionFlowNode):
@@ -198,7 +113,7 @@ class ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode(SingleChoiceDefin
                 # this means there is two instances of same type that share name
                 errors.append(f'Metadata definition error in {field_name}: found {name_count[name]} repeated instances of same type {tp_name} sharing name {instance_name}.')
         if len(errors) > 0:
-            raise FlowNodeException(self.name, errors)
+            raise NodeException(self.name, errors)
 
 
 class ModelExtractCheckConstraintsNode(SingleChoiceDefinitionFlowNode):

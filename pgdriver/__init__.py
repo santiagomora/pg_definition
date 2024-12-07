@@ -12,8 +12,8 @@ from .definition.table import\
     table_foreign_key,\
     default_nextval
 from .definition.common.flow import\
-    FlowNodeException,\
-    FlowEndException
+    NodeException,\
+    FlowException
 from .definition.enums import\
     enums
 from .definition.meta.predicate import\
@@ -47,18 +47,20 @@ from .definition.builtin import\
     date,\
     boolean
 from .definition.function import\
-    pg_single_result_function,\
-    pg_set_returning_function,\
-    pg_execute_function
+    single_result_function,\
+    set_returning_function,\
+    perform_function
 from datetime import\
     datetime,\
     time,\
     date as _date
 from .adapter_registry import\
     adapter_registry
+from .definition.extension import\
+    Extension
 
 
-__all__ = ['composite', 'table', 'table_index_type', 'table_foreign_key_action', 'table_index', 'table_unique_index', 'table_primary_key', 'table_foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamptz', 'timetz', 'date', 'boolean', 'pg_single_result_function', 'pg_set_returning_function', 'pg_execute_function', 'FlowNodeException', 'FlowEndException', 'adapter_registry']
+__all__ = ['composite', 'table', 'table_index_type', 'table_foreign_key_action', 'table_index', 'table_unique_index', 'table_primary_key', 'table_foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamptz', 'timetz', 'date', 'boolean', 'single_result_function', 'set_returning_function', 'perform_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension']
 
 
 check.type_compatibility.register(bigint, Number)

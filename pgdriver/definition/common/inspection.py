@@ -268,6 +268,10 @@ def extract_type(tp: type) -> type:
     return tp
 
 
+def get_members(cls: type) -> dict[str, type]:
+    return dict(cls.__annotations__)
+
+
 def flatten(items):
     """Yield items from any nested iterable; see Reference."""
     for x in items:

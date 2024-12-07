@@ -14,19 +14,19 @@ from contextlib import\
     contextmanager
 
 
-class FlowNodeException(Exception):
+class NodeException(Exception):
     def __init__(self, name, error_list):
         Exception.__init__(self, ', '.join(error_list))
         self.error_list = error_list
         self.component_name = name
 
 
-class FlowEndException(Exception):
-    def __init__(self, errors: dict[str, dict[str, FlowNodeException]]):
+class FlowException(Exception):
+    def __init__(self, errors: dict[str, dict[str, NodeException]]):
         Exception.__init__(self, pprint.pformat(errors))
         self._errors = errors
 
-    def get_error(self, flow_name: str, component_name: str) -> Optional[FlowNodeException]:
+    def get_error(self, flow_name: str, component_name: str) -> Optional[NodeException]:
         if flow_name in self._errors:
             if component_name in self._errors[flow_name]:
                 return self._errors[flow_name][component_name]
@@ -109,7 +109,7 @@ class FlowAccumulator(HandlesWorkPath):
         dic[name] = definition
         return self
 
-    def add_exception(self, flow_name: str, exception: FlowNodeException) -> Self:
+    def add_exception(self, flow_name: str, exception: NodeException) -> Self:
         flow_errors = self._errors.get(flow_name, {})
         flow_errors[exception.component_name] = exception
         self._errors[flow_name] = flow_errors
@@ -133,7 +133,7 @@ class DefinitionFlowNode:
         if not accumulator.has_errors():
             return
         if self._accumulator_errors_policy == FlowAccumulatorErrorsPolicy.END_FLOW:
-            raise FlowEndException(accumulator.errors)
+            raise FlowException(accumulator.errors)
 
     def get_dependencies(self) -> tuple[str]:
         return tuple()
@@ -208,14 +208,14 @@ class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
                             raise RuntimeError(f'Dependencies not met for node {node.name}.\nMissing: {dependencies - executed}')
                         executed.add(node.name)
                         node.execute(on_type, acc)
-                    except FlowNodeException as e:
+                    except NodeException as e:
                         accumulator.add_exception(self.name, e)
-                    except FlowEndException as e:
+                    except FlowException as e:
                         raise e
                     except RuntimeError as e:
                         raise e
                     except Exception as e:
-                        accumulator.add_exception(self.name, FlowNodeException(node.name, [str(e)]))
+                        accumulator.add_exception(self.name, NodeException(node.name, [str(e)]))
                     node = node.get_next(acc)
 
 
@@ -265,20 +265,3 @@ class DefinitionFlowBuilder:
             raise Exception('choice not started')
         self.parent.last_node.set_next(self.root_node)
         return self.parent
-
-
-class CommonDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):
-    """
-    Types can only inherit from base_class, if they inherit from a subclass of the 
-    base class, then they will be considered as domain. A definition in the accumulator
-    will be added accordingly
-    """
-
-    def __init__(self, name: str, base_class: type):
-        super().__init__(2, name)
-        self._base_class = base_class
-        self.is_domain: Optional[bool] = None
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        base_class: tuple[type] = target.__bases__[0]
-        self.is_domain = base_class is not self._base_class
