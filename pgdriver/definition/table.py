@@ -24,8 +24,7 @@ from .common.model import\
     table_definition_flow_root,\
     ModelValidateUniqueMetadataTypesNode,\
     ModelDiscardMetaInstancesFromInheritedFieldsNode,\
-    ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
-    ModelExtractCheckConstraintsNode
+    ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode
 from .common.node import\
     CommonValidateRestrictedMetadataTypesNode,\
     CommonValidateFieldsBaseTypeNode
@@ -39,112 +38,25 @@ from .common.inspection import\
     set_accumulator,\
     key_by,\
     extract_first_instance_from_field_metadata,\
-    is_optional,\
-    extract_type,\
     extract_definition_fields
 from .meta import\
     check,\
     default_value,\
     comment,\
-    OperandDefinitionContext
-from .sequence import\
-    sequence
-from enum import \
-    Enum
-
-
-class table_index_type(Enum):
-    BTREE = 'btree'
-    HASH = 'hash'
-    GIN = 'gin'
-    BRIN = 'brin'
-    GIST = 'gist'
-    SPGIST = 'spgist'
-
-
-class table_foreign_key_action(Enum):
-    SET_NULL = 'SET NULL'
-    SET_DEFAULT = 'SET DEFAULT'
-    RESTRICT = 'RESTRICT'
-    NO_ACTION = 'NO ACTION'
-    CASCADE = 'CASCADE'
+    OperandDefinitionContext,\
+    index,\
+    unique_index,\
+    primary_key,\
+    foreign_key,\
+    default_nextval
+from pydantic import\
+    BaseModel
 
 
 # KNOWN BUGS
 # BUG: if two parent table share the same value of the same type, and each one sets a different default value, then postgres will raise a conflict error, breaking the transaction. wont be implemented in this first version.
 
 
-T = TypeVar("T")
-
-
-@dataclass(kw_only=True)
-class table_index:
-    name: str
-    type: table_index_type = table_index_type.BTREE
-
-
-@dataclass(kw_only=True)
-class table_unique_index:
-    name: str
-    type: table_index_type = table_index_type.BTREE
-
-
-@dataclass(kw_only=True)
-class table_primary_key:
-    name: str
-
-
-@dataclass(kw_only=True)
-class table_foreign_key:
-    name: str
-    other_class: type[table]
-    other_class_column_name: str
-    on_update: table_foreign_key_action = table_foreign_key_action.NO_ACTION
-    on_delete: table_foreign_key_action = table_foreign_key_action.NO_ACTION
-
-    def __get_pydantic_core_schema__(self, source: Type[T], handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        if not issubclass(self.other_class, table):
-            raise TypeError(f'Other class {self.other_class} must be a {table} instance')
-        if self.other_class_column_name not in self.other_class.model_fields:
-            raise TypeError(f'Foreign key column {self.other_class_column_name} must exist in {self.other_class} definition')
-        other_class_column: FieldInfo = self.other_class.model_fields[self.other_class_column_name]
-        if extract_type(other_class_column.annotation) != extract_type(source):
-            raise TypeError(f'Foreign key column {handler.field_name} type must match with {self.other_class_column_name} in {self.other_class} definition')
-        schema: core_schema.CoreSchema = handler(source)
-        # ignore class check[T] has no attribute __orig_class__ error
-        # raised by mypy
-        return schema
-
-
-@dataclass(kw_only=True)
-class default_nextval:
-    seq: sequence
-
-    def __get_pydantic_core_schema__(self, source: type, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
-        base_seq: type = getattr(self.seq, '__pg_definition')()['base_type']
-        errors: list[str] = []
-        if is_optional(source):
-            errors.append('Annotated type must not be optional')
-        if base_seq is not source:
-            errors.append('Sequence type must match annotated type')
-        if len(errors) > 0:
-            raise TypeError(', '.join(errors))
-        # ignore class table_meta.check[T] has no attribute __orig_class__ error
-        # raised by mypy
-        return core_schema.with_info_after_validator_function(
-            function=self.validate,
-            schema=handler(source),
-            field_name=handler.field_name)
-
-    def validate(self, value: Any, info: ValidationInfo) -> Any:
-        # if value is None:
-        #    raise ValueError(f'Sequence {self.seq.__name__} value cant be empty')
-        definition = getattr(self.seq, '__pg_definition')()
-        if definition['min_value'] is not None and definition['min_value'] > value:
-            raise ValueError('Value cant be less than sequence min value')
-        if definition['max_value'] is not None and definition['max_value'] < value:
-            raise ValueError('Value cant be greater than sequence max value')
-        return value
 
 
 table_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(table_definition_flow_root)
@@ -226,21 +138,21 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
 class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('table-validate-same-type-meta-instances-have-different-names-node',
-                         types=[check, table_unique_index, table_index])
+                         types=[check, unique_index, index])
 
 
 class _TableValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-restricted-metadata-types-node',
-                         types=[table_foreign_key, table_primary_key, table_index,
-                                table_unique_index, check, default_value,
+                         types=[foreign_key, primary_key, index,
+                                unique_index, check, default_value,
                                 default_nextval, comment])
 
 
 class _TableValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-unique-metadata-types-node',
-                         types=[table_foreign_key, table_primary_key, default_value,
+                         types=[foreign_key, primary_key, default_value,
                                 default_nextval, comment])
 
 
@@ -254,7 +166,7 @@ class _TableValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
 class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('table-validate-same-type-meta-instances-have-different-names-node',
-                         types=[check, table_unique_index, table_index])
+                         types=[check, unique_index, index])
 
 
 class _TableDependsOnValidationNodes:
@@ -277,7 +189,7 @@ class _TableExtractIndexesNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         indexes: list[dict[str, Any]] = [ix for _, ix in extract_by_instance_type_from_model_fields_info(
             target,
-            table_index,
+            index,
             lambda field_name, index: {
                 'column_name': field_name,
                 'type':   index.type,
@@ -300,7 +212,7 @@ class _TableExtractUniqueIndexesNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         uixs: list[dict[str, Any]] = [uix for _, uix in extract_by_instance_type_from_model_fields_info(
             target,
-            table_unique_index,
+            unique_index,
             lambda field_name, uix: {
                 'column_name': field_name,
                 'type':        uix.type,
@@ -323,7 +235,7 @@ class _TableExtractPrimaryKeyNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         pks: list[dict[str, Any]] = [pk for _, pk in extract_by_instance_type_from_model_fields_info(
             target,
-            table_primary_key,
+            primary_key,
             lambda field_name, pk: {
                 'column_name': field_name,
                 'name':   pk.name})]
@@ -375,7 +287,7 @@ class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         fks: list[dict[str, Any]] = [fk for _, fk in extract_by_instance_type_from_model_fields_info(
             target,
-            table_foreign_key,
+            foreign_key,
             lambda field_name, fk: {
                 'name':                     fk.name,
                 'other_class':              fk.other_class,
@@ -397,10 +309,21 @@ class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
             raise NodeException(self.name, [str(e)])
 
 
-class _TableExtractCheckConstraintsNode(ModelExtractCheckConstraintsNode):
+class _TableExtractCheckConstraintsNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
-        super().__init__('table-extract-check-constraints-node',
-                         OperandDefinitionContext.TABLE)
+        super().__init__('table-extract-check-constraints-node')
+        self._context = OperandDefinitionContext.TABLE
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        checks: dict[str, check] = {}
+        for field, ck in extract_by_instance_type_from_model_fields_info(target, check):
+            ck.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
+            ck.name = f'{target.__name__}_{ck.name}'
+            if ck.name not in checks:
+                checks[ck.name] = ck
+            else:
+                checks[ck.name].predicate = checks[ck.name].predicate & ck.predicate
+        accumulator.add_definition('check_constraints', checks if checks != {} else None)
 
 
 class _TableExtractColumnsNode(SingleChoiceDefinitionFlowNode, _TableDependsOnValidationNodes):
@@ -441,7 +364,7 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = dict()
-        definition['class'] = target
+        definition['table'] = target
         definition['base_classes'] = set(target.__bases__) if len(target.__bases__) > 1 else None
         definition['comment'] = None
         definition['columns'] = accumulator.get_definition('columns', 'extraction')

@@ -42,7 +42,7 @@ from test_app.functions import\
 from test_app.extension import\
     test_app_extension as _test_app_extension
 import pytest
-from pgdriver.extension import\
+from pgdriver.definition.extension import\
     base_extension
 
 
@@ -183,8 +183,8 @@ def test_function_definition_flow_executed_correctly() -> None:
 @pytest.mark.asyncio
 async def test_sql_function_gets_parameters_correctly() -> None:
     with adapter_registry(dsn_test_db) as ar:
-        _test_app_extension.register_types(ar)
         base_extension.register_types(ar)
+        _test_app_extension.register_types(ar)
 
     # NOTE test that function store post correctly
     async with await psycopg.AsyncConnection.connect(dsn_test_db) as conn:

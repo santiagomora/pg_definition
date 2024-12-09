@@ -3,14 +3,7 @@ from numbers import\
 from .definition.composite import\
     composite
 from .definition.table import\
-    table,\
-    table_index_type,\
-    table_foreign_key_action,\
-    table_index,\
-    table_unique_index,\
-    table_primary_key,\
-    table_foreign_key,\
-    default_nextval
+    table
 from .definition.common.flow import\
     NodeException,\
     FlowException
@@ -26,7 +19,14 @@ from .definition.meta.predicate import\
 from .definition.meta import\
     check,\
     comment,\
-    default_value
+    default_value,\
+    index_type,\
+    foreign_key_action,\
+    index,\
+    unique_index,\
+    primary_key,\
+    foreign_key,\
+    default_nextval
 from .definition.sequence import\
     bigint_sequence,\
     integer_sequence,\
@@ -56,11 +56,11 @@ from datetime import\
     date as _date
 from .adapter_registry import\
     adapter_registry
-from .definition.extension import\
+from .extension import\
     Extension
 
 
-__all__ = ['composite', 'table', 'table_index_type', 'table_foreign_key_action', 'table_index', 'table_unique_index', 'table_primary_key', 'table_foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamptz', 'timetz', 'date', 'boolean', 'single_result_function', 'set_returning_function', 'perform_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension']
+__all__ = ['composite', 'table', 'index_type', 'foreign_key_action', 'index', 'unique_index', 'primary_key', 'foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamptz', 'timetz', 'date', 'boolean', 'single_result_function', 'set_returning_function', 'perform_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension']
 
 
 check.type_compatibility.register(bigint, Number)

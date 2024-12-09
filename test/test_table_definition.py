@@ -7,18 +7,18 @@ from pgdriver import\
     comment,\
     check,\
     default_value,\
-    table_index,\
-    table_unique_index,\
-    table_primary_key,\
-    table_foreign_key,\
+    index,\
+    unique_index,\
+    primary_key,\
+    foreign_key,\
     default_nextval,\
     literal,\
     smallint_sequence,\
     this,\
     FlowException,\
     NodeException,\
-    table_index_type,\
-    table_foreign_key_action
+    index_type,\
+    foreign_key_action
 from typing_extensions import\
     Annotated
 from typing import\
@@ -136,21 +136,21 @@ def test_definition_flow_detects_empty_table_definition() -> None:
         assert str(error) == "Class <class 'test_table_definition.test_definition_flow_detects_empty_table_definition.<locals>.test1'> must define columns."
 
 
-# table_index,\
-# table_unique_index,\
-# table_primary_key,\
-# table_foreign_key,\
+# index,\
+# unique_index,\
+# primary_key,\
+# foreign_key,\
 # default_nextval
 def test_definition_flow_detects_repeated_metadata_instances() -> None:
     try:
         class test1(table):
-            field: Annotated[integer, table_primary_key(name='test'), table_primary_key(name='test2')]
+            field: Annotated[integer, primary_key(name='test'), primary_key(name='test2')]
         assert False
     except FlowException as e:
         error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == f'Metadata type {table_primary_key} can only appear once in field declaration'
+        assert str(error) == f'Metadata type {primary_key} can only appear once in field declaration'
 
     try:
         class test1(table):
@@ -198,14 +198,14 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
     try:
         class test2(table):
             field1: Annotated[smallint,
-                              table_primary_key(name='test')]
+                              primary_key(name='test')]
 
         class test1(table):
             field: Annotated[smallint,
-                             table_foreign_key(name='test',
+                             foreign_key(name='test',
                                                   other_class=test2,
                                                   other_class_column_name='field1'),
-                             table_foreign_key(name='test2',
+                             foreign_key(name='test2',
                                                   other_class=test2,
                                                   other_class_column_name='field1'),]
         assert False
@@ -213,7 +213,7 @@ def test_definition_flow_detects_repeated_metadata_instances() -> None:
         error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-unique-metadata-types-node')
         assert error is not None
-        assert str(error) == f'Metadata type {table_foreign_key} can only appear once in field declaration'
+        assert str(error) == f'Metadata type {foreign_key} can only appear once in field declaration'
 
 def test_definition_flow_detects_mutually_exclusive_metadata_types() -> None:
     try:
@@ -237,7 +237,7 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
     try:
         class test2(table):
             field1: Annotated[smallint,
-                              table_primary_key(name='test')]
+                              primary_key(name='test')]
 
         class test_seq(smallint_sequence):
             pass
@@ -246,11 +246,11 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
             field1: Annotated[smallint,
                               check(name='test', predicate=this()>literal(0)),
                               default_nextval(seq=test_seq),
-                              table_primary_key(name='test'),
+                              primary_key(name='test'),
                               comment('TEST'),
-                              table_index(name='test'),
-                              table_unique_index(name='test'),
-                              table_foreign_key(name='test',
+                              index(name='test'),
+                              unique_index(name='test'),
+                              foreign_key(name='test',
                                                    other_class=test2,
                                                    other_class_column_name='field1'),]
     except Exception as e:
@@ -278,11 +278,11 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     try:
         class test2(table):
             field1: Annotated[integer,
-                              table_primary_key(name='test')]
+                              primary_key(name='test')]
 
         class test1(table):
             field: Annotated[smallint,
-                             table_foreign_key(name='test2',
+                             foreign_key(name='test2',
                                                   other_class=test2,
                                                   other_class_column_name='field1')]
     except TypeError as e:
@@ -291,11 +291,11 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     try:
         class test2(table):
             field3: Annotated[integer,
-                              table_primary_key(name='test')]
+                              primary_key(name='test')]
 
         class test1(table):
             field: Annotated[smallint,
-                             table_foreign_key(name='test2',
+                             foreign_key(name='test2',
                                                   other_class=test2,
                                                   other_class_column_name='field1')]
     except TypeError as e:
@@ -304,11 +304,11 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     # NOTE test that foreign keys are not inherited
     class test1(table):
         field1: Annotated[smallint,
-                          table_primary_key(name='test')]
+                          primary_key(name='test')]
 
     class test2(table):
         field: Annotated[smallint,
-                         table_foreign_key(name='test2',
+                         foreign_key(name='test2',
                                               other_class=test1,
                                               other_class_column_name='field1')]
 
@@ -324,28 +324,28 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     assert def2['foreign_keys'][0]['other_class'] == test1
     assert set([f[1] for f in def2['foreign_keys'][0]['constrained_column_pairs']]) == set(('field1', ))
     assert set([f[0] for f in def2['foreign_keys'][0]['constrained_column_pairs']]) == set(('field', ))
-    assert def2['foreign_keys'][0]['on_update'] == table_foreign_key_action.NO_ACTION
-    assert def2['foreign_keys'][0]['on_delete'] == table_foreign_key_action.NO_ACTION
+    assert def2['foreign_keys'][0]['on_update'] == foreign_key_action.NO_ACTION
+    assert def2['foreign_keys'][0]['on_delete'] == foreign_key_action.NO_ACTION
     assert def2['foreign_keys'][0]['name'] == 'test2'
 
     assert def3['foreign_keys'] is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['field'], table_foreign_key) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['field'], foreign_key) is None
 
     # NOTE test that final definition contains expected data
     # NOTE test that foreign keys are correctly grouped by name in final definition
     class test4(table):
         t4_field1: Annotated[smallint,
-                             table_primary_key(name='test')]
+                             primary_key(name='test')]
         t4_field2: Annotated[text,
-                             table_primary_key(name='test')]
+                             primary_key(name='test')]
 
     class test5(table):
         t5_field1: Annotated[smallint,
-                             table_foreign_key(name='test2',
+                             foreign_key(name='test2',
                                                   other_class=test4,
                                                   other_class_column_name='t4_field1')]
         t5_field2: Annotated[text,
-                             table_foreign_key(name='test2',
+                             foreign_key(name='test2',
                                                   other_class=test4,
                                                   other_class_column_name='t4_field2')]
 
@@ -353,8 +353,8 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     assert def5['foreign_keys'][0]['other_class'] == test4
     assert set([f[1] for f in def5['foreign_keys'][0]['constrained_column_pairs']]) == set(('t4_field1', 't4_field2'))
     assert set([f[0] for f in def5['foreign_keys'][0]['constrained_column_pairs']]) == set(('t5_field1', 't5_field2'))
-    assert def5['foreign_keys'][0]['on_update'] == table_foreign_key_action.NO_ACTION
-    assert def5['foreign_keys'][0]['on_delete'] == table_foreign_key_action.NO_ACTION
+    assert def5['foreign_keys'][0]['on_update'] == foreign_key_action.NO_ACTION
+    assert def5['foreign_keys'][0]['on_delete'] == foreign_key_action.NO_ACTION
     assert def5['foreign_keys'][0]['name'] == 'test2'
 
     # NOTE test that validates that all fields pointed by foreign keys participate in unique index or primary key
@@ -362,15 +362,15 @@ def test_foreign_key_definition_correctly_extracted() -> None:
         class test6(table):
             t6_field1: smallint
             t6_field2: Annotated[text,
-                                 table_primary_key(name='test')]
+                                 primary_key(name='test')]
 
         class test7(table):
             t7_field1: Annotated[smallint,
-                                 table_foreign_key(name='test2',
+                                 foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field1')]
             t7_field2: Annotated[text,
-                                 table_foreign_key(name='test2',
+                                 foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
@@ -389,11 +389,11 @@ def test_foreign_key_definition_correctly_extracted() -> None:
 
         class test7(table):
             t7_field1: Annotated[smallint,
-                                 table_foreign_key(name='test2',
+                                 foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field1')]
             t7_field2: Annotated[text,
-                                 table_foreign_key(name='test2',
+                                 foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
@@ -407,16 +407,16 @@ def test_foreign_key_definition_correctly_extracted() -> None:
     try:
         class test6(table):
             t6_field1: Annotated[smallint,
-                                 table_primary_key(name='test')]
+                                 primary_key(name='test')]
             t6_field2: text
 
         class test7(table):
             t7_field1: Annotated[smallint,
-                                 table_foreign_key(name='test2',
+                                 foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field1')]
             t7_field2: Annotated[text,
-                                 table_foreign_key(name='test2',
+                                 foreign_key(name='test2',
                                                       other_class=test6,
                                                       other_class_column_name='t6_field2')]
         assert False
@@ -434,9 +434,9 @@ def test_primary_key_definition_correctly_extracted() -> None:
     try:
         class test1(table):
             t1_field1: Annotated[smallint,
-                                 table_primary_key(name='test')]
+                                 primary_key(name='test')]
             t1_field2: Annotated[smallint,
-                                 table_primary_key(name='test2')]
+                                 primary_key(name='test2')]
         assert False
     except FlowException as e:
         error: Optional[NodeException] = e.get_error('table-definition-flow',
@@ -447,9 +447,9 @@ def test_primary_key_definition_correctly_extracted() -> None:
     # NOTE test that primary keys are not inherited
     class test1(table):
         t1_field1: Annotated[smallint,
-                             table_primary_key(name='test')]
+                             primary_key(name='test')]
         t1_field2: Annotated[smallint,
-                             table_primary_key(name='test')]
+                             primary_key(name='test')]
 
     class test2(test1):
         pass
@@ -458,8 +458,8 @@ def test_primary_key_definition_correctly_extracted() -> None:
     def2 = getattr(test2, '__pg_definition')()
     assert 'primary_key' in def2
     assert def2['primary_key'] is None
-    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field1'], table_primary_key) is None
-    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field2'], table_primary_key) is None
+    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field1'], primary_key) is None
+    assert extract_first_instance_from_field_metadata(test2.model_fields['t1_field2'], primary_key) is None
 
     # NOTE test primary key is correctly grouped by name in final definition
     # NOTE test that primary key final definition is correct
@@ -474,25 +474,25 @@ def test_index_definition_correctly_extracted() -> None:
     # NOTE test index is correctly grouped by name in final definition
     class test1(table):
         t1_field1: Annotated[smallint,
-                             table_index(name='test')]
+                             index(name='test')]
         t1_field2: Annotated[smallint,
-                             table_index(name='test')]
+                             index(name='test')]
     assert hasattr(test1, '__pg_definition')
     def1 = getattr(test1, '__pg_definition')()
     assert 'indexes' in def1
     assert len(def1['indexes']) == 1
     assert def1['indexes'][0]['column_name'] == set(('t1_field2', 't1_field1'))
-    assert def1['indexes'][0]['type'] == table_index_type.BTREE
+    assert def1['indexes'][0]['type'] == index_type.BTREE
     assert def1['indexes'][0]['name'] == 'test'
     # NOTE test that columns can appear in several indexes
     class test2(table):
         t2_field1: Annotated[smallint,
-                             table_index(name='test'),
-                             table_index(name='test1')]
+                             index(name='test'),
+                             index(name='test1')]
         t2_field2: Annotated[smallint,
-                             table_index(name='test')]
+                             index(name='test')]
         t2_field3: Annotated[smallint,
-                             table_index(name='test1')]
+                             index(name='test1')]
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'indexes' in def2
@@ -502,7 +502,7 @@ def test_index_definition_correctly_extracted() -> None:
     assert any([ix['column_name'] == set(('t2_field1', 't2_field3')) for ix in def2['indexes']])
     assert any([ix['name'] == 'test' for ix in def2['indexes']])
     assert any([ix['name'] == 'test1' for ix in def2['indexes']])
-    assert all([ix['type'] == table_index_type.BTREE for ix in def2['indexes']])
+    assert all([ix['type'] == index_type.BTREE for ix in def2['indexes']])
 
     # NOTE test that indexes are not inherited
     class test3(test2):
@@ -511,45 +511,45 @@ def test_index_definition_correctly_extracted() -> None:
     def3 = getattr(test3, '__pg_definition')()
     assert 'indexes' in def3
     assert def3['indexes'] is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], table_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], table_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], table_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], index) is None
 
     try:
         class test4(table):
             t2_field1: Annotated[smallint,
-                                table_index(name='test'),
-                                table_index(name='test')]
+                                index(name='test'),
+                                index(name='test')]
     except FlowException as e:
         error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
-        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type table_index sharing name test.'
+        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type index sharing name test.'
 
 
 def test_unique_index_definition_correctly_extracted() -> None:
     # NOTE test unique index is correctly grouped by name in final definition
     class test1(table):
         t1_field1: Annotated[smallint,
-                             table_unique_index(name='test')]
+                             unique_index(name='test')]
         t1_field2: Annotated[smallint,
-                             table_unique_index(name='test')]
+                             unique_index(name='test')]
     assert hasattr(test1, '__pg_definition')
     def1 = getattr(test1, '__pg_definition')()
     assert 'unique_indexes' in def1
     assert len(def1['unique_indexes']) == 1
     assert def1['unique_indexes'][0]['column_name'] == set(('t1_field2', 't1_field1'))
-    assert def1['unique_indexes'][0]['type'] == table_index_type.BTREE
+    assert def1['unique_indexes'][0]['type'] == index_type.BTREE
     assert def1['unique_indexes'][0]['name'] == 'test'
     # NOTE test that columns can appear in several indexes
     class test2(table):
         t2_field1: Annotated[smallint,
-                             table_unique_index(name='test'),
-                             table_unique_index(name='test1')]
+                             unique_index(name='test'),
+                             unique_index(name='test1')]
         t2_field2: Annotated[smallint,
-                             table_unique_index(name='test')]
+                             unique_index(name='test')]
         t2_field3: Annotated[smallint,
-                             table_unique_index(name='test1')]
+                             unique_index(name='test1')]
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'unique_indexes' in def2
@@ -558,7 +558,7 @@ def test_unique_index_definition_correctly_extracted() -> None:
     assert any([ix['column_name'] == set(('t2_field1', 't2_field3')) for ix in def2['unique_indexes']])
     assert any([ix['name'] == 'test' for ix in def2['unique_indexes']])
     assert any([ix['name'] == 'test1' for ix in def2['unique_indexes']])
-    assert all([ix['type'] == table_index_type.BTREE for ix in def2['unique_indexes']])
+    assert all([ix['type'] == index_type.BTREE for ix in def2['unique_indexes']])
 
     # NOTE test that unique indexes are not inherited
     class test3(test2):
@@ -567,20 +567,20 @@ def test_unique_index_definition_correctly_extracted() -> None:
     def3 = getattr(test3, '__pg_definition')()
     assert 'unique_indexes' in def3
     assert def3['unique_indexes'] is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], table_unique_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], table_unique_index) is None
-    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], table_unique_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field1'], unique_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field2'], unique_index) is None
+    assert extract_first_instance_from_field_metadata(test3.model_fields['t2_field3'], unique_index) is None
 
     try:
         class test4(table):
             t2_field1: Annotated[smallint,
-                                table_unique_index(name='test'),
-                                table_unique_index(name='test')]
+                                unique_index(name='test'),
+                                unique_index(name='test')]
     except FlowException as e:
         error: Optional[NodeException] = e.get_error('table-definition-flow',
                                                          'table-validate-same-type-meta-instances-have-different-names-node')
         assert error is not None
-        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type table_unique_index sharing name test.'
+        assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type unique_index sharing name test.'
 
 
 def test_check_definition_correctly_extracted() -> None:

@@ -86,7 +86,7 @@ class _RecordLoader(psycomposite.CompositeLoader):
         return self._load_recursive(data, self.field_types)
 
 
-class AdapterRegistry:
+class _AdapterRegistry:
     def __init__(self) -> None:
         self._type_oid: dict[type, int] = {}
         self._oid_fields: dict[int, list[str]] = {}
@@ -150,4 +150,4 @@ class AdapterRegistry:
         self._type_oid[cls] = info.oid
 
 
-adapter_registry = AdapterRegistry()
+adapter_registry = _AdapterRegistry()

@@ -6,8 +6,8 @@ from pgdriver import\
     composite,\
     bigint_sequence,\
     default_nextval,\
-    table_primary_key,\
-    table_foreign_key,\
+    primary_key,\
+    foreign_key,\
     enums
 from typing_extensions import \
     Annotated
@@ -34,7 +34,7 @@ class post_status_enum(enums):
 
 
 class author(table):
-    id: Annotated[bigint, table_primary_key(name='post_pk'),
+    id: Annotated[bigint, primary_key(name='post_pk'),
                   default_nextval(seq=author_id_sequence)]
     name: text
 
@@ -45,22 +45,22 @@ class with_timestamps(table):
 
 
 class authored(table):
-    author_id: Annotated[bigint, table_foreign_key(name='authorable_author_fk',
+    author_id: Annotated[bigint, foreign_key(name='authorable_author_fk',
                                                    other_class=author,
                                                    other_class_column_name='id')]
     content: text
 
 
 class post(authored, with_timestamps):
-    id: Annotated[bigint, table_primary_key(name='post_pk'),
+    id: Annotated[bigint, primary_key(name='post_pk'),
                   default_nextval(seq=post_id_sequence)]
     title: text
     status: post_status_enum
 
 
 class comment(authored, with_timestamps):
-    id: Annotated[bigint, table_primary_key(name='comment_pk')]
-    post_id: Annotated[bigint, table_foreign_key(name='comment_post_fk',
+    id: Annotated[bigint, primary_key(name='comment_pk')]
+    post_id: Annotated[bigint, foreign_key(name='comment_post_fk',
                                                  other_class=post,
                                                  other_class_column_name='id'),
                        default_nextval(seq=comment_id_sequence)]

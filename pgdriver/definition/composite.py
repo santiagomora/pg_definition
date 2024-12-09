@@ -13,8 +13,7 @@ from .common.model import\
     table,\
     ModelValidateUniqueMetadataTypesNode,\
     ModelDiscardMetaInstancesFromInheritedFieldsNode,\
-    ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode,\
-    ModelExtractCheckConstraintsNode
+    ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode
 from .common.node import\
     CommonDetermineIfTargetIsDomainNode,\
     CommonValidateRestrictedMetadataTypesNode,\
@@ -30,7 +29,8 @@ from .meta import\
 from .common.inspection import\
     extract_definition_fields,\
     get_field_parent_definition,\
-    extract_first_instance_from_field_metadata
+    extract_first_instance_from_field_metadata,\
+    extract_by_instance_type_from_model_fields_info
 
 
 composite_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(composite_definition_flow_root)
@@ -185,10 +185,21 @@ class _CompositeDomainExtractAttributesDefinitionNode(SingleChoiceDefinitionFlow
         accumulator.add_definition('attributes', attributes)
 
 
-class _CompositeDomainExtractCheckConstraintNode(ModelExtractCheckConstraintsNode):
+class _CompositeDomainExtractCheckConstraintNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
-        super().__init__('composite-domain-extract-check-constraints-node',
-                         OperandDefinitionContext.COMPOSITE_DOMAIN)
+        super().__init__('composite-domain-extract-check-constraints-node')
+        self._context = OperandDefinitionContext.COMPOSITE_DOMAIN
+
+    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+        checks: dict[str, check] = {}
+        for field, ck in extract_by_instance_type_from_model_fields_info(target, check):
+            ck.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
+            ck.name = f'{target.__name__}_{ck.name}'
+            if ck.name not in checks:
+                checks[ck.name] = ck
+            else:
+                checks[ck.name].predicate = checks[ck.name].predicate & ck.predicate
+        accumulator.add_definition('check_constraints', checks if checks != {} else None)
 
 
 class _CompositeDomainDiscardMetaInstancesFromInheritedFieldsNode(ModelDiscardMetaInstancesFromInheritedFieldsNode, _CompositeDependsOnValidationNodes):

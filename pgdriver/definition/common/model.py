@@ -6,9 +6,6 @@ from .flow import\
     NodeException
 from pydantic import\
     BaseModel
-from ..meta import\
-    check,\
-    OperandDefinitionContext
 from .inspection import\
     get_field_classified_metadata_appearances,\
     extract_definition_fields,\
@@ -114,20 +111,3 @@ class ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode(SingleChoiceDefin
                 errors.append(f'Metadata definition error in {field_name}: found {name_count[name]} repeated instances of same type {tp_name} sharing name {instance_name}.')
         if len(errors) > 0:
             raise NodeException(self.name, errors)
-
-
-class ModelExtractCheckConstraintsNode(SingleChoiceDefinitionFlowNode):
-    def __init__(self, name: str, context: OperandDefinitionContext):
-        super().__init__(name)
-        self._context = context
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        checks: dict[str, check] = {}
-        for field, ck in extract_by_instance_type_from_model_fields_info(target, check):
-            ck.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
-            ck.name = f'{target.__name__}_{ck.name}'
-            if ck.name not in checks:
-                checks[ck.name] = ck
-            else:
-                checks[ck.name].predicate = checks[ck.name].predicate & ck.predicate
-        accumulator.add_definition('check_constraints', checks if checks != {} else None)
