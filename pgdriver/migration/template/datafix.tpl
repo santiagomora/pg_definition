@@ -9,7 +9,7 @@
 
 
 CREATE OR REPLACE FUNCTION mgr_datafix_{datafix_id}_up()
-RETURNS bigint AS $$
+RETURNS int8 AS $$
 BEGIN
     -- your code here
 

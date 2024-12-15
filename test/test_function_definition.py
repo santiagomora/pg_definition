@@ -1,25 +1,7 @@
 import psycopg
-from pgdriver import\
-    adapter_registry,\
-    builtin,\
-    bigint,\
-    integer,\
-    smallint,\
-    single_result_function,\
-    text,\
-    timestamptz,\
-    timetz,\
-    date,\
-    real,\
-    char,\
-    double,\
-    byte,\
-    boolean
+import pgdriver as pg
 from typing_extensions import\
     Annotated
-from pgdriver.definition.common.flow import\
-    FlowException,\
-    NodeException
 from typing import\
     Optional
 import datetime
@@ -51,9 +33,9 @@ dsn_test_db: str = 'host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub passwo
 
 def test_function_definition_flow_executed_correctly() -> None:
     # NOTE test definition is correctly extracted
-    class test_func(single_result_function[bigint]):
-        param_1: timestamptz
-        param_2: bigint
+    class test_func(pg.single_result_function[pg.int8]):
+        param_1: pg.timestamptz
+        param_2: pg.int8
 
     assert hasattr(test_func, '__pg_definition')
     def0 = getattr(test_func, '__pg_definition')()
@@ -62,30 +44,30 @@ def test_function_definition_flow_executed_correctly() -> None:
     assert 'name' in def0
     assert def0['name'] == test_func.__name__
     assert 'return_type' in def0
-    assert def0['return_type'] is bigint
+    assert def0['return_type'] is pg.int8
     assert 'arguments' in def0
     assert 'param_1' in def0['arguments']
-    assert def0['arguments']['param_1'] == timestamptz
+    assert def0['arguments']['param_1'] == pg.timestamptz
     assert 'param_2' in def0['arguments']
-    assert def0['arguments']['param_2'] == bigint
+    assert def0['arguments']['param_2'] == pg.int8
 
     # NOTE test definition flow doesnt allow parameter metadata
     try:
         class incorrect_meta():
             pass
 
-        class incorrect_test_func(single_result_function[bigint]):
-            param_1: Annotated[timestamptz, incorrect_meta()]
-            param_2: bigint
-    except FlowException as e:
-        error: Optional[NodeException] = e.get_error('function-definition-flow',
+        class incorrect_test_func(pg.single_result_function[pg.int8]):
+            param_1: Annotated[pg.timestamptz, incorrect_meta()]
+            param_2: pg.int8
+    except pg.FlowException as e:
+        error: Optional[pg.NodeException] = e.get_error('function-definition-flow',
                                                          'function-validate-restricted-metadata-types-node')
         assert error is not None
         assert str(error) == "Invalid metadata type <class 'test_function_definition.test_function_definition_flow_executed_correctly.<locals>.incorrect_meta'> in param_1 declaration"
 
     # NOTE test definition flow doesnt allow non pg types
     try:
-        class test(single_result_function[bigint]):
+        class test(pg.single_result_function[pg.int8]):
             field_1: int
             field_2: str
             field_3: float
@@ -95,86 +77,86 @@ def test_function_definition_flow_executed_correctly() -> None:
             field_7: datetime.date
             field_8: bool
         assert False
-    except FlowException as e:
-        error: Optional[NodeException] = e.get_error('function-definition-flow',
+    except pg.FlowException as e:
+        error: Optional[pg.NodeException] = e.get_error('function-definition-flow',
                                                      'function-validate-arguments-base-type-node')
         assert error is not None
         field_errors: list[str] = [
-            f'Field field_3 type must be a subclass of {builtin}',
-            f'Field field_2 type must be a subclass of {builtin}',
-            f'Field field_6 type must be a subclass of {builtin}',
-            f'Field field_7 type must be a subclass of {builtin}',
-            f'Field field_5 type must be a subclass of {builtin}',
-            f'Field field_4 type must be a subclass of {builtin}',
-            f'Field field_1 type must be a subclass of {builtin}',
-            f'Field field_8 type must be a subclass of {builtin}']
+            f'Field field_3 type must be a subclass of {pg.builtin}',
+            f'Field field_2 type must be a subclass of {pg.builtin}',
+            f'Field field_6 type must be a subclass of {pg.builtin}',
+            f'Field field_7 type must be a subclass of {pg.builtin}',
+            f'Field field_5 type must be a subclass of {pg.builtin}',
+            f'Field field_4 type must be a subclass of {pg.builtin}',
+            f'Field field_1 type must be a subclass of {pg.builtin}',
+            f'Field field_8 type must be a subclass of {pg.builtin}']
         for err in field_errors:
             assert err in error.error_list
 
     # NOTE test definition flow allows only pgtypes for arguments
     try:
-        class test(single_result_function[bigint]):
-            field_1: bigint
-            field_2: integer
-            field_3: smallint
-            field_4: text
-            field_5: timestamptz
-            field_6: timetz
-            field_7: date
-            field_8: real
-            field_9: text
-            field_10: char
-            field_11: double
-            field_12: byte
-            field_13: boolean
+        class test(pg.single_result_function[pg.int8]):
+            field_1: pg.int8
+            field_2: pg.int4
+            field_3: pg.int2
+            field_4: pg.text
+            field_5: pg.timestamptz
+            field_6: pg.timetz
+            field_7: pg.date
+            field_8: pg.float4
+            field_9: pg.text
+            field_10: pg.char
+            field_11: pg.float8
+            field_12: pg.bytea
+            field_13: pg.bool
     except Exception:
         assert False
 
     # NOTE test definition flow allows only pgtypes for result type
     try:
-        class test(single_result_function[int]):
+        class test(pg.single_result_function[int]):
             pass
     except Exception as e:
-        error: Optional[NodeException] = e.get_error('function-definition-flow',
+        error: Optional[pg.NodeException] = e.get_error('function-definition-flow',
                                                          'function-extract-return-type-node')
         assert error is not None
         assert str(error) == f"Function return type must be a valid pg type, received {int}"
 
     try:
-        class test1(single_result_function[integer]):
+        class test1(pg.single_result_function[pg.int4]):
             pass
 
-        class test2(single_result_function[smallint]):
+        class test2(pg.single_result_function[pg.int2]):
             pass
 
-        class test3(single_result_function[text]):
+        class test3(pg.single_result_function[pg.text]):
             pass
 
-        class test4(single_result_function[timestamptz]):
+        class test4(pg.single_result_function[pg.timestamptz]):
             pass
 
-        class test5(single_result_function[timetz]):
+        class test5(pg.single_result_function[pg.timetz]):
             pass
 
-        class test6(single_result_function[date]):
+        class test6(pg.single_result_function[pg.date]):
             pass
 
-        class test7(single_result_function[real]):
+        class test7(pg.single_result_function[pg.float4]):
             pass
 
-        class test8(single_result_function[text]):
+        class test8(pg.single_result_function[pg.text]):
             pass
 
-        class test9(single_result_function[char]):
+        class test9(pg.single_result_function[pg.char]):
             pass
 
-        class test10(single_result_function[double]):
+        class test10(pg.single_result_function[pg.float8]):
             pass
 
-        class test11(single_result_function[byte]):
+        class test11(pg.single_result_function[pg.bytea]):
             pass
 
-        class test12(single_result_function[boolean]):
+        class test12(pg.single_result_function[pg.bool]):
             pass
     except Exception:
         assert False
@@ -182,7 +164,7 @@ def test_function_definition_flow_executed_correctly() -> None:
 
 @pytest.mark.asyncio
 async def test_sql_function_gets_parameters_correctly() -> None:
-    with adapter_registry(dsn_test_db) as ar:
+    with pg.adapter_registry(dsn_test_db) as ar:
         base_extension.register_types(ar)
         _test_app_extension.register_types(ar)
 
@@ -225,7 +207,7 @@ async def test_sql_function_gets_parameters_correctly() -> None:
             assert new_post_comment.author_id == post_1_author.id
             assert new_post_comment.content == 'new post test comment'
             assert new_post_comment.post_id == new_post.id
-            new_post_comment_2: comment = await create_comment(
+            new_post_comment: comment = await create_comment(
                 cur, p_author=post_1_author,
                 p_content='(new post test comment)', p_post=new_post)
             cp: comment_post = await as_comment_post(
@@ -234,5 +216,5 @@ async def test_sql_function_gets_parameters_correctly() -> None:
             assert isinstance(cp, comment_post)
             assert isinstance(cp.post, post)
             assert isinstance(cp.comment, comment)
-            assert isinstance(cp.description, text)
+            assert isinstance(cp.description, pg.text)
             assert isinstance(cp.author, author)

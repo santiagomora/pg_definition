@@ -1,20 +1,13 @@
 from enum import\
     auto
-from pgdriver import\
-    enums,\
-    with_comment,\
-    with_default_value,\
-    comment,\
-    FlowException,\
-    NodeException,\
-    default_value
+import pgdriver as pg
 from typing import\
     Optional
 
 
 def test_enums_definition_flow_executes_correctly() -> None:
     # NOTE: test that definitions get correctly extracted
-    class test0(enums):
+    class test0(pg.enums):
         FIELD = auto()
 
     assert hasattr(test0, '__pg_definition')
@@ -30,7 +23,7 @@ def test_enums_definition_flow_executes_correctly() -> None:
 
     # NOTE: test that members are string
     try:
-        class test0(enums):
+        class test0(pg.enums):
             FIELD = 1
         assert False
     except TypeError as e:
@@ -41,7 +34,7 @@ def test_enums_definition_flow_executes_correctly() -> None:
         class test:
             pass
 
-        class test0(enums, test):
+        class test0(pg.enums, test):
             FIELD = 1
         assert False
     except TypeError as e:
@@ -51,20 +44,20 @@ def test_enums_definition_flow_executes_correctly() -> None:
 def test_enums_domain_definition_flow_executes_correctly() -> None:
     # NOTE: enums definition flow detects domain declaring additional members
     try:
-        class test0(enums):
+        class test0(pg.enums):
             FIELD = auto()
 
         class test1(test0):
             FIELD1 = auto()
         assert False
-    except FlowException as e:
-        error: Optional[NodeException] = e.get_error('enums-definition-flow',
+    except pg.FlowException as e:
+        error: Optional[pg.NodeException] = e.get_error('enums-definition-flow',
                                                          'enums-domain-validate-members-node')
         assert error is not None
         assert str(error) == "<enum 'test1'> enums cant define own member FIELD1 if it inherits from a <enum 'enums'> subclass"
 
     # NOTE: enums definition flow detects domain declaring additional members
-    class test2(enums):
+    class test2(pg.enums):
         FIELD1 = auto()
         FIELD2 = auto()
         FIELD3 = auto()
@@ -97,7 +90,7 @@ def test_enums_domain_definition_flow_executes_correctly() -> None:
         assert test3[memb.name].value == memb.value
 
     try:
-        class test5(enums):
+        class test5(pg.enums):
             FIELD1 = auto()
 
         class test6(test5):
@@ -107,14 +100,14 @@ def test_enums_domain_definition_flow_executes_correctly() -> None:
 
 
 def test_comments_correctly_added_to_enums_definition() -> None:
-    @with_comment('test comment')
-    class test0(enums):
+    @pg.comment('test comment')
+    class test0(pg.enums):
         FIELD = auto()
 
     assert hasattr(test0, '__pg_definition')
     def0 = getattr(test0, '__pg_definition')()
     assert 'comment' in def0
-    assert def0['comment'] == comment('test comment')
+    assert def0['comment'] == pg.meta.comment('test comment')
 
     class test1(test0):
         pass
@@ -124,43 +117,43 @@ def test_comments_correctly_added_to_enums_definition() -> None:
     assert 'comment' in def1
     assert def1['comment'] is None
 
-    @with_comment('test comment')
+    @pg.comment('test comment')
     class test2(test1):
         pass
 
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'comment' in def2
-    assert def2['comment'] == comment('test comment')
+    assert def2['comment'] == pg.meta.comment('test comment')
 
 
 def test_default_value_to_enums_definition() -> None:
     try:
-        @with_default_value('test comment')
-        class test0(enums):
+        @pg.default_value('test comment')
+        class test0(pg.enums):
             FIELD1 = auto()
         assert False
     except KeyError as e:
         assert str(e) == "'default_value'"
 
-    class test1(enums):
+    class test1(pg.enums):
         FIELD1 = auto()
 
-    @with_default_value('field1')
+    @pg.default_value('field1')
     class test2(test1):
         pass
 
     assert hasattr(test2, '__pg_definition')
     def2 = getattr(test2, '__pg_definition')()
     assert 'default_value' in def2
-    assert isinstance(def2['default_value'], default_value)
+    assert isinstance(def2['default_value'], pg.meta.default_value)
     assert def2['default_value'].default._lit == test2('field1')
 
     try:
-        class test3(enums):
+        class test3(pg.enums):
             FIELD1 = auto()
 
-        @with_default_value('test')
+        @pg.default_value('test')
         class test4(test3):
             pass
         assert False

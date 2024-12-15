@@ -232,6 +232,16 @@ def set_accumulator(
     return accumulator
 
 
+def tuple_accumulator(
+    member: Any,
+    accumulator: Optional[set[Any]]
+) -> set[Any]:
+    if accumulator is None:
+        return (member, )
+    accumulator = (*accumulator, member)
+    return accumulator
+
+
 def ordered_set_accumulator(
     set_member: Any,
     accumulator: Optional[OrderedSet[Any]]

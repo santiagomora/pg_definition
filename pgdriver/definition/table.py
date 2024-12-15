@@ -35,28 +35,43 @@ from .builtin import\
 from .common.inspection import\
     extract_by_instance_type_from_model_fields_info,\
     aggregate,\
-    set_accumulator,\
+    tuple_accumulator,\
     key_by,\
     extract_first_instance_from_field_metadata,\
-    extract_definition_fields
+    extract_definition_fields,\
+    is_optional,\
+    extract_type
 from .meta import\
-    check,\
-    default_value,\
-    comment,\
-    OperandDefinitionContext,\
-    index,\
-    unique_index,\
-    primary_key,\
-    foreign_key,\
-    default_nextval
+    meta,\
+    OperandDefinitionContext
 from pydantic import\
     BaseModel
+from enum import\
+    Enum
+
+
+class index_type(Enum):
+    BTREE = 'btree'
+    HASH = 'hash'
+    GIN = 'gin'
+    BRIN = 'brin'
+    GIST = 'gist'
+    SPGIST = 'spgist'
+
+
+class foreign_key_action(Enum):
+    SET_NULL = 'SET NULL'
+    SET_DEFAULT = 'SET DEFAULT'
+    RESTRICT = 'RESTRICT'
+    NO_ACTION = 'NO ACTION'
+    CASCADE = 'CASCADE'
 
 
 # KNOWN BUGS
 # BUG: if two parent table share the same value of the same type, and each one sets a different default value, then postgres will raise a conflict error, breaking the transaction. wont be implemented in this first version.
 
 
+__all__ = ['table', 'primary_key', 'foreign_key', 'unique_constraint', 'index', 'index_type', 'foreign_key_action']
 
 
 table_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(table_definition_flow_root)
@@ -121,7 +136,7 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
     def __init__(self):
         super().__init__('table-validate-mutually-exclusive-metadata-node')
         self.mutually_exclusive: list[tuple[type, type]] = [
-            (default_value, default_nextval)]
+            (meta.default_value, meta.default_nextval)]
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
@@ -138,22 +153,19 @@ class _TableValidateMutuallyExclusiveMetadataNode(SingleChoiceDefinitionFlowNode
 class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('table-validate-same-type-meta-instances-have-different-names-node',
-                         types=[check, unique_index, index])
+                         types=[meta.check])
 
 
 class _TableValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-restricted-metadata-types-node',
-                         types=[foreign_key, primary_key, index,
-                                unique_index, check, default_value,
-                                default_nextval, comment])
+                         types=[meta.check, meta.default_value, meta.default_nextval, meta.comment])
 
 
 class _TableValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
     def __init__(self):
         super().__init__('table-validate-unique-metadata-types-node',
-                         types=[foreign_key, primary_key, default_value,
-                                default_nextval, comment])
+                         types=[meta.default_value, meta.default_nextval, meta.comment])
 
 
 class _TableValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
@@ -161,12 +173,6 @@ class _TableValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
         super().__init__('table-validate-fields-base-type-node',
                          type_subclass=[enums, builtin, composite],
                          type_instance=[builtin])
-
-
-class _TableValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
-    def __init__(self):
-        super().__init__('table-validate-same-type-meta-instances-have-different-names-node',
-                         types=[check, unique_index, index])
 
 
 class _TableDependsOnValidationNodes:
@@ -181,142 +187,14 @@ class _TableDependsOnValidationNodes:
                 'table-validate-existing-columns-node')
 
 
-class _TableExtractIndexesNode(SingleChoiceDefinitionFlowNode,
-                               _TableDependsOnValidationNodes):
-    def __init__(self):
-        super().__init__('table-extract-indexes-node')
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        indexes: list[dict[str, Any]] = [ix for _, ix in extract_by_instance_type_from_model_fields_info(
-            target,
-            index,
-            lambda field_name, index: {
-                'column_name': field_name,
-                'type':   index.type,
-                'name':   index.name})]
-        try:
-            grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('name', ),
-                indexes)
-            definition: list[dict[str, Any]] = [aggregate(grouped_by_name[ix_name], {'column_name': set_accumulator}) for ix_name in grouped_by_name]
-            accumulator.add_definition('indexes', definition if len(definition) > 0 else None)
-        except Exception as e:
-            raise NodeException(self.name, [str(e)])
-
-
-class _TableExtractUniqueIndexesNode(SingleChoiceDefinitionFlowNode,
-                                     _TableDependsOnValidationNodes):
-    def __init__(self):
-        super().__init__('table-extract-unique-indexes-node')
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        uixs: list[dict[str, Any]] = [uix for _, uix in extract_by_instance_type_from_model_fields_info(
-            target,
-            unique_index,
-            lambda field_name, uix: {
-                'column_name': field_name,
-                'type':        uix.type,
-                'name':        uix.name})]
-        try:
-            grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('name', ),
-                uixs)
-            definition: list[dict[str, Any]] = [aggregate(grouped_by_name[uix_name], {'column_name': set_accumulator}) for uix_name in grouped_by_name]
-            accumulator.add_definition('unique_indexes', definition if len(definition) > 0 else None)
-        except Exception as e:
-            raise NodeException(self.name, [str(e)])
-
-
-class _TableExtractPrimaryKeyNode(SingleChoiceDefinitionFlowNode,
-                                  _TableDependsOnValidationNodes):
-    def __init__(self):
-        super().__init__('table-extract-primary-key-node')
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        pks: list[dict[str, Any]] = [pk for _, pk in extract_by_instance_type_from_model_fields_info(
-            target,
-            primary_key,
-            lambda field_name, pk: {
-                'column_name': field_name,
-                'name':   pk.name})]
-        try:
-            grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('name', ),
-                pks)
-            definition: Optional[list[dict[str, Any]]] = [aggregate(grouped_by_name[pk_name], {'column_name': set_accumulator}) for pk_name in grouped_by_name]
-            if len(definition) > 1:
-                raise Exception(f'Multiple primary keys detected for class {target}')
-            elif len(definition) == 1:
-                accumulator.add_definition('primary_key', definition[0])
-        except Exception as e:
-            raise NodeException(self.name, [str(e)])
-
-
-class _TableExtractForeignKeysNode(SingleChoiceDefinitionFlowNode,
-                                   _TableDependsOnValidationNodes):
-    def __init__(self):
-        super().__init__('table-extract-foreign-keys-node')
-
-    def _extract_other_class_constraints(
-        self, fk: dict[str, Any], constraint_names: tuple[str, ...]
-    ) -> list[dict[str, Any]]:
-        other_class_pg_def: Optional[dict[str, Any]] = getattr(fk['other_class'], '__pg_definition')()
-        res: list[dict[str, Any]] = []
-        for name in constraint_names:
-            if other_class_pg_def[name] is not None:
-                if isinstance(other_class_pg_def[name], list):
-                    res += other_class_pg_def[name]
-                else:
-                    res.append(other_class_pg_def[name])
-        return res
-
-    def _check_for_other_class_constraints(
-        self, fks: list[dict[str, Any]],
-        constraint_names: tuple[str, ...]
-    ) -> list[str]:
-        errors: list[str] = []
-        for fk in fks:
-            constraints: list[dict[str, Any]] = self._extract_other_class_constraints(fk, constraint_names)
-            class_column_names = set([const[0] for const in fk['constrained_column_pairs']])
-            other_class_column_names = set([const[1] for const in fk['constrained_column_pairs']])
-            if len(constraints) == 0 or not any([const['column_name'] == other_class_column_names for const in constraints]):
-                errors.append(f'Foreign key {fk["name"]} error: Other class {fk["other_class"]} must define any {constraint_names} constraint over referenced columns {other_class_column_names}')
-        if len(errors) > 0:
-            raise NodeException(self.name, errors)
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        fks: list[dict[str, Any]] = [fk for _, fk in extract_by_instance_type_from_model_fields_info(
-            target,
-            foreign_key,
-            lambda field_name, fk: {
-                'name':                     fk.name,
-                'other_class':              fk.other_class,
-                'constrained_column_pairs': (field_name, fk.other_class_column_name, ),
-                'on_update':                fk.on_update,
-                'on_delete':                fk.on_delete})]
-        errors: list[str] = []
-        try:
-            grouped_by_name: dict[str, list[dict[str, Any]]] = key_by(
-                ('name', ),
-                fks)
-            definition: list[dict[str, Any]] = [aggregate(grouped_by_name[fk_name], {
-                    'constrained_column_pairs': set_accumulator}) for fk_name in grouped_by_name]
-            self._check_for_other_class_constraints(definition, ('unique_indexes', 'primary_key', ))
-            accumulator.add_definition('foreign_keys', definition if len(definition) > 0 else None)
-        except NodeException as e:
-            raise e
-        except Exception as e:
-            raise NodeException(self.name, [str(e)])
-
-
 class _TableExtractCheckConstraintsNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
         super().__init__('table-extract-check-constraints-node')
         self._context = OperandDefinitionContext.TABLE
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        checks: dict[str, check] = {}
-        for field, ck in extract_by_instance_type_from_model_fields_info(target, check):
+        checks: dict[str, meta.check] = {}
+        for field, ck in extract_by_instance_type_from_model_fields_info(target, meta.check):
             ck.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
             ck.name = f'{target.__name__}_{ck.name}'
             if ck.name not in checks:
@@ -332,24 +210,24 @@ class _TableExtractColumnsNode(SingleChoiceDefinitionFlowNode, _TableDependsOnVa
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         # extraer las definiciones de columna
-        columns: list[dict[str, Any]] = []
+        columns: dict[str, dict[str, Any]] = {}
         for name, info in extract_definition_fields(target):
             col_data: dict[str, Any] = {
                 'name': name,
                 'type': info.annotation}
-            comment_inst: Optional[comment] = extract_first_instance_from_field_metadata(info, comment)
+            comment_inst: Optional[meta.comment] = extract_first_instance_from_field_metadata(info, meta.comment)
             col_data['comment'] = comment_inst
-            default: Optional[default_value | default_nextval] = extract_first_instance_from_field_metadata(info, default_value)
+            default: Optional[meta.default_value | meta.default_nextval] = extract_first_instance_from_field_metadata(info, meta.default_value)
             if default is not None:
                 default.default.propagate_definition(target.model_fields[name].annotation, name, OperandDefinitionContext.TABLE)
             else:
-                default = extract_first_instance_from_field_metadata(info, default_nextval)
+                default = extract_first_instance_from_field_metadata(info, meta.default_nextval)
             col_data['default_value'] = default
-            columns.append(col_data)
+            columns[name] = col_data
         accumulator.add_definition('columns', columns)
 
 
-class _TableDiscardMetaInstancesFromInheritedFieldsNode(ModelDiscardMetaInstancesFromInheritedFieldsNode):
+class _TableDiscardMetaInstancesFromInheritedFieldsNode(ModelDiscardMetaInstancesFromInheritedFieldsNode, _TableDependsOnValidationNodes):
     def __init__(self):
         super().__init__('table-discard-meta-instances-from-inherited-fields-node')
 
@@ -364,25 +242,22 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = dict()
-        definition['table'] = target
-        definition['base_classes'] = set(target.__bases__) if len(target.__bases__) > 1 else None
+        definition['schema'] = None
+        definition['type'] = target
+        definition['base_classes'] = tuple(target.__bases__) if len(target.__bases__) > 1 else None
         definition['comment'] = None
         definition['columns'] = accumulator.get_definition('columns', 'extraction')
-        definition['primary_key'] = accumulator.get_definition('primary_key', 'extraction')
-        definition['foreign_keys'] = accumulator.get_definition('foreign_keys', 'extraction')
-        definition['unique_indexes'] = accumulator.get_definition('unique_indexes', 'extraction')
-        definition['indexes'] = accumulator.get_definition('indexes', 'extraction')
+        definition['primary_key'] = None
+        definition['foreign_keys'] = {}
+        definition['unique_constraints'] = {}
+        definition['indexes'] = {}
         definition['check'] = accumulator.get_definition('check_constraints', 'extraction')
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('table-extract-indexes-node',
-                'table-extract-primary-key-node',
-                'table-extract-foreign-keys-node',
-                'table-extract-unique-indexes-node',
+        return ('table-extract-column-definition-node',
                 'table-extract-check-constraints-node',
-                'table-discard-meta-instances-from-inherited-fields-node',
-                'table-extract-column-definition-node')
+                'table-discard-meta-instances-from-inherited-fields-node')
 
 
 table_flow_builder\
@@ -395,10 +270,6 @@ table_flow_builder\
         .add_node(_TableValidateUniqueMetadataTypesNode)\
         .add_node(_TableValidateFieldsBaseTypeNode)\
     .at_work_path('extraction')\
-        .add_node(_TableExtractIndexesNode).critical()\
-        .add_node(_TableExtractPrimaryKeyNode)\
-        .add_node(_TableExtractForeignKeysNode)\
-        .add_node(_TableExtractUniqueIndexesNode)\
         .add_node(_TableExtractCheckConstraintsNode)\
         .add_node(_TableExtractColumnsNode)\
         .add_node(_TableDiscardMetaInstancesFromInheritedFieldsNode)\
@@ -406,4 +277,122 @@ table_flow_builder\
         .add_node(_TableStoreFinalDefinitionNode).critical()
 
 
-__all__ = {'table': table}
+class primary_key:
+    def __init__(self, *, name: str,  columns: tuple[str, ...]) -> None:
+        self.primary_key: dict[str, Any] = {
+            'name': name,
+            'columns': columns}
+
+    def __call__(self, target: type):
+        definition = getattr(target, '__pg_definition')()
+        invalid_columns: set[str] = set(self.primary_key['columns']) - set(target.model_fields.keys())
+        assert definition['primary_key'] is None
+        if len(invalid_columns) > 0:
+            raise TypeError(f'Invalid primary key definition, columns "{invalid_columns}" not present in table definition')
+        definition['primary_key'] = self.primary_key
+        return target
+
+
+class foreign_key:
+    def __init__(
+        self, *, name: str,  columns: tuple[str, ...], other_class: type[table],
+        other_class_columns: tuple[str, ...],
+        on_update: foreign_key_action = foreign_key_action.NO_ACTION,
+        on_delete: foreign_key_action = foreign_key_action.NO_ACTION
+    ) -> None:
+        assert len(columns) == len(other_class_columns)
+        assert len(columns) > 0
+        assert issubclass(other_class, table)
+        self.foreign_key: dict[str, Any] = {
+            'name': name,
+            'columns': columns,
+            'other_class': other_class,
+            'other_class_columns': other_class_columns,
+            'on_update': on_update,
+            'on_delete': on_delete}
+
+    def _extract_other_class_constraints(
+        self, constraint_names: tuple[str, ...]
+    ) -> list[dict[str, Any]]:
+        other_class_pg_def: Optional[dict[str, Any]] = getattr(self.foreign_key['other_class'], '__pg_definition')()
+        res: dict[str, Any] = {}
+        for name in constraint_names:
+            if other_class_pg_def[name] is not None:
+                if 'name' in other_class_pg_def[name]:
+                    res[other_class_pg_def[name]['name']] = other_class_pg_def[name]
+                else:
+                    res |= other_class_pg_def[name]
+        return res
+
+    def _check_for_other_class_constraints(
+        self, *constraint_names: tuple[str, ...]
+    ) -> list[str]:
+        fk: dict[str, Any] = self.foreign_key
+        constraints: list[dict[str, Any]] = self._extract_other_class_constraints(constraint_names)
+        other_class_columns= set(fk['other_class_columns'])
+        if len(constraints) == 0 or not any([len(other_class_columns - set(const['columns'])) == 0 for _, const in constraints.items()]):
+            raise TypeError(f'Foreign key "{fk["name"]}" error: Other class "{fk["other_class"]}" must define any {constraint_names} constraint over referenced columns {fk["other_class_columns"]}')
+
+    def _check_other_class_column_types(
+        self, target: type[table]
+    ) -> list[str]:
+        fk: dict[str, Any] = self.foreign_key
+        for ix in range(0, len(self.foreign_key['columns'])):
+            column: FieldInfo = target.model_fields[fk['columns'][ix]]
+            if fk['other_class_columns'][ix] not in fk['other_class'].model_fields:
+                raise TypeError(f'Foreign key column "{fk["other_class_columns"][ix]}" must exist in <class \'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test2\'> definition')
+            other_column: FieldInfo = fk['other_class'].model_fields[fk['other_class_columns'][ix]]
+            if extract_type(column.annotation) != extract_type(other_column.annotation):
+                raise TypeError(f'Foreign key column "{fk["columns"][ix]}" type must match with "{fk['other_class_columns'][ix]}" in {fk["other_class"]} definition')
+
+    def __call__(self, target: type):
+        assert issubclass(target, table)
+        definition = getattr(target, '__pg_definition')()
+        assert self.foreign_key['name'] not in definition['foreign_keys']
+        invalid_columns: set[str] = set(self.foreign_key['columns']) - set(target.model_fields.keys())
+        if len(invalid_columns) > 0:
+            raise TypeError(f'Invalid foreign key definition, columns "{invalid_columns}" not present in table definition')
+        self._check_other_class_column_types(target)
+        self._check_for_other_class_constraints('unique_constraints', 'primary_key', 'indexes')
+        definition['foreign_keys'][self.foreign_key['name']] = self.foreign_key
+        return target
+
+
+class unique_constraint:
+    def __init__(self, name: str,  columns: tuple[str, ...]) -> None:
+        assert len(columns) > 0
+        self.unique_constraint: dict[str, Any] = {
+            'name': name,
+            'columns': columns}
+
+    def __call__(self, target: type):
+        assert issubclass(target, table)
+        definition = getattr(target, '__pg_definition')()
+        assert self.unique_constraint['name'] not in definition['unique_constraints']
+        invalid_columns: set[str] = set(self.unique_constraint['columns']) - set(target.model_fields.keys())
+        if len(invalid_columns) > 0:
+            raise TypeError(f'Invalid unique constraint definition, columns "{invalid_columns}" not present in table definition')
+        definition['unique_constraints'][self.unique_constraint['name']] = self.unique_constraint
+        return target
+
+
+class index:
+    def __init__(
+        self, *, name: str, columns: tuple[str, ...],
+        type: index_type = index_type.BTREE, unique: bool = False,
+    ) -> None:
+        self.index: dict[str, Any] = {
+            'name': name,
+            'type': type,
+            'unique': unique,
+            'columns': columns}
+
+    def __call__(self, target: type):
+        assert issubclass(target, table)
+        definition = getattr(target, '__pg_definition')()
+        assert self.index['name'] not in definition['indexes']
+        invalid_columns: set[str] = set(self.index['columns']) - set(target.model_fields.keys())
+        if len(invalid_columns) > 0:
+            raise TypeError(f'Invalid index definition, columns "{invalid_columns}" not present in table definition')
+        definition['indexes'][self.index['name']] = self.index
+        return target

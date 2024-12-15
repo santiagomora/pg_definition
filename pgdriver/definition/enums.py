@@ -103,6 +103,7 @@ class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition: dict[str, Optional[str]] = dict()
         definition['type'] = target
         definition['comment'] = None
+        definition['schema'] = None
         definition['members'] = accumulator.get_definition('members', 'extraction')
         accumulator.add_definition('final', definition)
 
@@ -130,6 +131,7 @@ class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
+        definition['schema'] = None
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None

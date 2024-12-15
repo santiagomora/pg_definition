@@ -65,7 +65,7 @@ class ModelValidateUniqueMetadataTypesNode(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         errors: list[str] = []
         # extract_by_instance_type_from_model_fields_info debe obtener toda la metadata
-        # hasta el type basico subyacente. por ejemplo de integer hasta el type
+        # hasta el type basico subyacente. por ejemplo de int4 hasta el type
         # int subyacente
         for name, info in extract_definition_fields(target):
             classified_field_meta: dict[type, int] = get_field_classified_metadata_appearances(info)
@@ -79,7 +79,7 @@ class ModelValidateUniqueMetadataTypesNode(SingleChoiceDefinitionFlowNode):
 
 class ModelDiscardMetaInstancesFromInheritedFieldsNode(SingleChoiceDefinitionFlowNode):
     """
-    All inherited metadata gets discarded. Initially it was planned to keep checks and default values, but as parent validation gets applied when creating an instance, this is not necessary.
+    All inherited metadata gets discarded. Initially it was planned to keep check and default values, but as parent validation gets applied when creating an instance, this is not necessary.
     Postgres itself will be in charge to add all parent check constraints by itself when declaring the inheritance over the child class.
     """
 

@@ -1,73 +1,59 @@
-from pgdriver import\
-    bigint,\
-    text,\
-    timestamptz,\
-    table,\
-    composite,\
-    bigint_sequence,\
-    default_nextval,\
-    primary_key,\
-    foreign_key,\
-    enums
-from typing_extensions import \
-    Annotated
-from enum import\
-    auto
+import pgdriver as pg
 
 
-class author_id_sequence(bigint_sequence):
+class author_id_sequence(pg.int8_sequence):
     pass
 
 
-class post_id_sequence(bigint_sequence):
+class post_id_sequence(pg.int8_sequence):
     pass
 
 
-class comment_id_sequence(bigint_sequence):
+class comment_id_sequence(pg.int8_sequence):
     pass
 
 
-class post_status_enum(enums):
-    published = auto()
-    waiting_approval = auto()
-    draft = auto()
+class post_status_enum(pg.enums):
+    published = pg.auto()
+    waiting_approval = pg.auto()
+    draft = pg.auto()
 
 
-class author(table):
-    id: Annotated[bigint, primary_key(name='post_pk'),
-                  default_nextval(seq=author_id_sequence)]
-    name: text
+@pg.primary_key(name='author_pk', columns=('id', ))
+class author(pg.table):
+    id: pg.Annotated[pg.int8, pg.meta.default_nextval(seq=author_id_sequence)]
+    name: pg.text
 
 
-class with_timestamps(table):
-    created_at: timestamptz
-    updated_at: timestamptz
+class with_timestamps(pg.table):
+    created_at: pg.timestamptz
+    updated_at: pg.timestamptz
 
 
-class authored(table):
-    author_id: Annotated[bigint, foreign_key(name='authorable_author_fk',
-                                                   other_class=author,
-                                                   other_class_column_name='id')]
-    content: text
+@pg.foreign_key(name='authorable_author_fk', other_class=author,
+                columns=('author_id', ), other_class_columns=('id', ))
+class authored(pg.table):
+    author_id: pg.int8
+    content: pg.text
 
 
+@pg.primary_key(name='post_pk', columns=('id', ))
 class post(authored, with_timestamps):
-    id: Annotated[bigint, primary_key(name='post_pk'),
-                  default_nextval(seq=post_id_sequence)]
-    title: text
+    id: pg.Annotated[pg.int8, pg.meta.default_nextval(seq=post_id_sequence)]
+    title: pg.text
     status: post_status_enum
 
 
+@pg.primary_key(name='comment_pk', columns=('id', ))
+@pg.foreign_key(name='comment_post_fk', other_class=post, columns=('post_id', ),
+                other_class_columns=('id', ))
 class comment(authored, with_timestamps):
-    id: Annotated[bigint, primary_key(name='comment_pk')]
-    post_id: Annotated[bigint, foreign_key(name='comment_post_fk',
-                                                 other_class=post,
-                                                 other_class_column_name='id'),
-                       default_nextval(seq=comment_id_sequence)]
+    id: pg.int8
+    post_id: pg.Annotated[pg.int8, pg.meta.default_nextval(seq=comment_id_sequence)]
 
 
-class comment_post(composite):
+class comment_post(pg.composite):
     comment: comment
     post: post
-    description: text
+    description: pg.text
     author: author

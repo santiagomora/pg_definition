@@ -1,7 +1,7 @@
 
 
 CREATE OR REPLACE FUNCTION get_author_by_id(
-    p_author_id bigint
+    p_author_id int8
 ) RETURNS author AS $$
 DECLARE
     v_result author;
@@ -16,7 +16,7 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION get_post_by_id(
-    p_post_id bigint
+    p_post_id int8
 ) RETURNS post AS $$
 DECLARE
     v_result post;

@@ -21,7 +21,7 @@ from .table import\
 from .enums import\
     enums
 from .builtin import\
-    bigint
+    int8
 from psycopg import \
     AsyncConnection,\
     AsyncTransaction,\
@@ -136,6 +136,7 @@ class _FunctionStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
+        definition['schema'] = None
         definition['name'] = target.__name__
         definition['comment'] = None
         definition['arguments'] = accumulator.get_definition('arguments', 'extraction')

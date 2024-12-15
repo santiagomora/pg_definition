@@ -1,6 +1,7 @@
 from typing import\
     Any,\
-    Union
+    Union,\
+    TypeAlias
 from pydantic_core import\
     core_schema
 from pydantic import\
@@ -27,7 +28,7 @@ _builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('
 builtin_builder = DefinitionFlowBuilder(_builtin_definition_flow_root)
 
 
-__all__ = ['integer', 'bigint', 'smallint', 'text', 'double', 'real', 'byte', 'char', 'timestamptz', 'timetz', 'date', 'boolean', 'builtin_instance']
+__all__ = ['int4', 'int8', 'int2', 'text', 'float8', 'float4', 'bytea', 'char', 'timestamptz', 'timetz', 'date', 'bool', 'builtin_instance']
 
 
 class builtin(type):
@@ -108,6 +109,7 @@ class _BuiltinStoreFinalDefinition(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, str] = dict()
         definition['type'] = target
+        definition['schema'] = 'pg_catalog'
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
@@ -120,6 +122,7 @@ class _BuiltinDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
+        definition['schema'] = None
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
@@ -137,15 +140,15 @@ builtin_builder\
         .end_choice()
 
 
-class smallint(np.int16, metaclass=builtin):
+class int2(np.int16, metaclass=builtin):
     pass
 
 
-class integer(np.int32, metaclass=builtin):
+class int4(np.int32, metaclass=builtin):
     pass
 
 
-class bigint(np.int64, metaclass=builtin):
+class int8(np.int64, metaclass=builtin):
     pass
 
 
@@ -153,11 +156,11 @@ class text(str, metaclass=builtin):
     pass
 
 
-class real(np.float32, metaclass=builtin):
+class float4(np.float32, metaclass=builtin):
     pass
 
 
-class double(np.float64, metaclass=builtin):
+class float8(np.float64, metaclass=builtin):
     pass
 
 
@@ -165,11 +168,11 @@ class char(np.int8, metaclass=builtin):
     pass
 
 
-class byte(np.byte, metaclass=builtin):
+class bytea(bytes, metaclass=builtin):
     pass
 
 
-class boolean(np.bool, metaclass=builtin):
+class bool(np.bool, metaclass=builtin):
     pass
 
 
@@ -196,7 +199,7 @@ class timestamptz(datetime, metaclass=builtin):
 
 class timetz(time, metaclass=builtin):
     # timetz will always be a tuple, as it is possible to specify timetz units
-    # first parameter can be a 'hh?:mm?:ss?,(...)' string or an integer
+    # first parameter can be a 'hh?:mm?:ss?,(...)' string or an int4
     def __new__(
         cls, *args, **kwargs
     ):
@@ -216,4 +219,4 @@ class date(_date, metaclass=builtin):
         return super().__new__(cls, *args, **kwargs)
 
 
-builtin_instance = Union[integer, bigint, smallint, text, double, real, byte, char, timestamptz, timetz, date, boolean]
+builtin_instance: TypeAlias = Union[int4, int8, int2, text, float8, float4, bytea, char, timestamptz, timetz, date, bool]

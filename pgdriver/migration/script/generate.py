@@ -134,19 +134,19 @@ if __name__ == '__main__':
         if args.depends_on is not None:
             check_migration_exists(args.depends_on, mgr_dest_path)
         if args.bind_datafix_id is not None:
-            # check that datafix exists
+            # checks that datafix exists
             assert os.path.exists(f'{df_dest_path}/datafix_{args.bind_datafix_id}.sql')
-            # check that the datafix is not related to any other migration
+            # checks that the datafix is not related to any other migration
             check_datafix_not_bound_to_migrations(args.bind_datafix_id, mgr_dest_path)
             print(f'Generating migration #{migration_id} bound to datafix #{args.bind_datafix_id}...')
-            # check depends_on migration exists
+            # checks depends_on migration exists
             generate_migration(migration_id, args.bind_datafix_id, mgr_dest_path, args.depends_on, template_path)
         elif args.with_datafix:
             last_datafix_id: Optional[int] = determine_last_generated_id(df_dest_path, 'datafix_{}.sql')
             datafix_id: int = 1 if last_datafix_id is None else last_datafix_id + 1
             print(f'Generating migration #{migration_id} and datafix #{datafix_id}...')
             generate_datafix(datafix_id, df_dest_path, template_path)
-            # check depends_on migration exists
+            # checks depends_on migration exists
             generate_migration(migration_id, datafix_id, mgr_dest_path, args.depends_on, template_path)
         else:
             print(f'Generating migration #{migration_id}...')

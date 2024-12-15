@@ -3,7 +3,13 @@ from numbers import\
 from .definition.composite import\
     composite
 from .definition.table import\
-    table
+    table,\
+    index_type,\
+    foreign_key_action,\
+    index,\
+    unique_constraint,\
+    primary_key,\
+    foreign_key
 from .definition.common.flow import\
     NodeException,\
     FlowException
@@ -17,35 +23,16 @@ from .definition.meta.predicate import\
     literal,\
     length
 from .definition.meta import\
-    check,\
-    comment,\
-    default_value,\
-    index_type,\
-    foreign_key_action,\
-    index,\
-    unique_index,\
-    primary_key,\
-    foreign_key,\
-    default_nextval
+    meta
 from .definition.sequence import\
-    bigint_sequence,\
-    integer_sequence,\
-    smallint_sequence,\
-    sequence
-from .definition.builtin import\
-    builtin,\
-    integer,\
-    bigint,\
-    smallint,\
-    real,\
-    text,\
-    char,\
-    double,\
-    byte,\
-    timestamptz,\
-    timetz,\
-    date,\
-    boolean
+    int8_sequence,\
+    int4_sequence,\
+    int2_sequence,\
+    sequence,\
+    increment,\
+    max_value,\
+    min_value
+import pgdriver.definition.builtin as build
 from .definition.function import\
     single_result_function,\
     set_returning_function,\
@@ -58,25 +45,56 @@ from .adapter_registry import\
     adapter_registry
 from .extension import\
     Extension
+from typing_extensions import\
+    Annotated
+from enum import\
+    auto
 
 
-__all__ = ['composite', 'table', 'index_type', 'foreign_key_action', 'index', 'unique_index', 'primary_key', 'foreign_key', 'default_nextval', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'check', 'comment', 'default_value', 'bigint_sequence', 'integer_sequence', 'smallint_sequence', 'sequence', 'builtin', 'integer', 'bigint', 'smallint', 'real', 'text', 'char', 'double', 'byte', 'timestamptz', 'timetz', 'date', 'boolean', 'single_result_function', 'set_returning_function', 'perform_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension']
+__all__ = ['composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'perform_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value']
 
 
-check.type_compatibility.register(bigint, Number)
-check.type_compatibility.register(integer, Number)
-check.type_compatibility.register(smallint, Number)
-check.type_compatibility.register(double, Number)
-check.type_compatibility.register(real, Number)
-check.type_compatibility.register(timetz, time)
-check.type_compatibility.register(date, _date)
-check.type_compatibility.register(text, str)
-check.type_compatibility.register(timestamptz, datetime)
-check.type_compatibility.register(boolean, bool)
-check.type_compatibility.register(composite, composite)
+meta.check.type_compatibility.register(build.int8, Number)
+meta.check.type_compatibility.register(build.int4, Number)
+meta.check.type_compatibility.register(build.int2, Number)
+meta.check.type_compatibility.register(build.float8, Number)
+meta.check.type_compatibility.register(build.float4, Number)
+meta.check.type_compatibility.register(build.timetz, time)
+meta.check.type_compatibility.register(build.date, _date)
+meta.check.type_compatibility.register(build.text, str)
+meta.check.type_compatibility.register(build.timestamptz, datetime)
+meta.check.type_compatibility.register(build.bool, bool)
+meta.check.type_compatibility.register(composite, composite)
 
 
-def with_default_value(*args, **kwargs):
+builtin = build.builtin
+int4 = build.int4
+int8 = build.int8
+int2 = build.int2
+float4 = build.float4
+text = build.text
+char = build.char
+float8 = build.float8
+bytea = build.bytea
+timestamptz = build.timestamptz
+timetz = build.timetz
+date = build.date
+bool = build.bool
+
+
+class check:
+    def __init__(self, name: str,  predicate: LogicOperand) -> None:
+        self.check_meta: meta.check = meta.check(name=name, predicate=predicate)
+
+    def __call__(self, target: type):
+        definition = getattr(target, '__pg_definition')()
+        assert definition['check'] is None
+        self.check_meta.predicate.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
+        definition['check'] = self.check_meta
+        return target
+
+
+def default_value(*args, **kwargs):
 
     def _add_to_definition(target: type):
         # esto va a cambiar, no se deberia poder acceder a la definicion directamente
@@ -85,7 +103,7 @@ def with_default_value(*args, **kwargs):
         assert hasattr(target.__bases__[0], '__pg_definition')
         definition = getattr(target, '__pg_definition')()
         assert definition['default_value'] is None
-        value: default_value = default_value(*args, **kwargs)
+        value: meta.default_value = meta.default_value(*args, **kwargs)
         value.default.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
         definition['default_value'] = value
         return target
@@ -93,7 +111,7 @@ def with_default_value(*args, **kwargs):
     return _add_to_definition
 
 
-def with_comment(value: str):
+def comment(value: str):
 
     def _add_to_definition(target: type):
         # esto va a cambiar, no se deberia poder acceder a la definicion directamente
@@ -101,61 +119,19 @@ def with_comment(value: str):
         definition = getattr(target, '__pg_definition')()
         assert definition['comment'] is None
         assert isinstance(value, str)
-        definition['comment'] = comment(value)
+        definition['comment'] = meta.comment(value)
         return target
 
     return _add_to_definition
 
 
-class with_check:
-    def __init__(self, name: str,  predicate: LogicOperand) -> None:
-        self._check: check = check(name=name, predicate=predicate)
+def in_schema(schema_name: str):
 
-    def __call__(self, target: type):
+    def _add_to_definition(target: type):
         definition = getattr(target, '__pg_definition')()
-        assert definition['check'] is None
-        self._check.predicate.propagate_definition(target, None, OperandDefinitionContext.BUILTIN_DOMAIN)
-        definition['check'] = self._check
+        assert definition['schema'] is None
+        assert isinstance(schema_name, str)
+        definition['schema'] = schema_name
         return target
 
-
-class with_max_value:
-    def __init__(self, max_value: int):
-        self._max_value = max_value
-
-    def __call__(self, wrapped) -> type:
-        if not isinstance(wrapped, sequence):
-            raise TypeError('Decorated class must be a sequence subclass')
-        definition = getattr(wrapped, '__pg_definition')()
-        assert 'max_value' in definition
-        assert definition['max_value'] is None
-        definition['max_value'] = wrapped(self._max_value)
-        return wrapped
-
-
-class with_min_value:
-    def __init__(self, min_value: int):
-        self._min_value = min_value
-
-    def __call__(self, wrapped) -> type:
-        if not isinstance(wrapped, sequence):
-            raise TypeError('Decorated class must be a sequence subclass')
-        definition = getattr(wrapped, '__pg_definition')()
-        assert 'min_value' in definition
-        assert definition['min_value'] is None
-        definition['min_value'] = wrapped(self._min_value)
-        return wrapped
-
-
-class with_increment:
-    def __init__(self, increment: int):
-        self._increment = increment
-
-    def __call__(self, wrapped) -> type:
-        if not isinstance(wrapped, sequence):
-            raise TypeError('Decorated class must be a sequence subclass')
-        definition = getattr(wrapped, '__pg_definition')()
-        assert 'increment' in definition
-        assert definition['increment'] is None
-        definition['increment'] = wrapped(self._increment)
-        return wrapped
+    return _add_to_definition

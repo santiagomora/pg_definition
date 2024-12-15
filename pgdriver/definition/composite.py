@@ -23,8 +23,7 @@ from .builtin import\
 from .enums import\
     enums
 from .meta import\
-    check,\
-    comment,\
+    meta,\
     OperandDefinitionContext
 from .common.inspection import\
     extract_definition_fields,\
@@ -44,7 +43,7 @@ but this situation changes when defining a domain. Postgres allows user to decla
 check constraints on domain types, so a composite domain has a totally different
 workflow than a composite type.
 
-2. comments on composite types or composite domains attributes are not supported.
+2. meta.comments on composite types or composite domains attributes are not supported.
 """
 
 
@@ -58,13 +57,13 @@ class _CompositeValidateFieldsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
 class _CompositeValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-restricted-metadata-types-node',
-                         types=[comment])
+                         types=[meta.comment])
 
 
 class _CompositeValidateUniqueMetadataTypesNode(ModelValidateUniqueMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-validate-unique-metadata-types-node',
-                         types=[comment])
+                         types=[meta.comment])
 
 
 class _CompositeDependsOnValidationNodes:
@@ -91,7 +90,7 @@ class _CompositeExtractAttributesDefinitionNode(SingleChoiceDefinitionFlowNode,
             attributes[name] = {
                 'name': name,
                 'type': info.annotation,
-                'comment': extract_first_instance_from_field_metadata(info, comment)}
+                'comment': extract_first_instance_from_field_metadata(info, meta.comment)}
         if len(attributes) <= 0:
             raise NodeException(self.name, [f'Class {target} must declare attributes.'])
         accumulator.add_definition('attributes', attributes)
@@ -106,6 +105,7 @@ class _CompositeStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['attributes'] = accumulator.get_definition('attributes', 'extraction')
         definition['comment'] = None
+        definition['schema'] = None
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
@@ -129,7 +129,7 @@ class _CompositeDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNod
 class _CompositeDomainValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
     def __init__(self):
         super().__init__('composite-domain-validate-restricted-metadata-types-node',
-                         types=[check])
+                         types=[meta.check])
 
 
 class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
@@ -155,7 +155,7 @@ class _CompositeDomainValidateAttributesNode(SingleChoiceDefinitionFlowNode):
 class _CompositeDomainValidateSameTypeMetaInstancesHaveDifferentNamesNode(ModelValidateSameTypeMetaInstancesHaveDifferentNamesNode):
     def __init__(self):
         super().__init__('composite-domain-validate-same-type-meta-instances-have-different-names-node',
-                         types=[check])
+                         types=[meta.check])
 
 class _CompositeDomainDependsOnValidationNodes:
     def get_dependencies(self) -> tuple[str]:
@@ -191,8 +191,8 @@ class _CompositeDomainExtractCheckConstraintNode(SingleChoiceDefinitionFlowNode)
         self._context = OperandDefinitionContext.COMPOSITE_DOMAIN
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        checks: dict[str, check] = {}
-        for field, ck in extract_by_instance_type_from_model_fields_info(target, check):
+        checks: dict[str, meta.check] = {}
+        for field, ck in extract_by_instance_type_from_model_fields_info(target, meta.check):
             ck.predicate.propagate_definition(target.model_fields[field].annotation, field, self._context)
             ck.name = f'{target.__name__}_{ck.name}'
             if ck.name not in checks:
@@ -217,6 +217,7 @@ class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = dict()
+        definition['schema'] = None
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None

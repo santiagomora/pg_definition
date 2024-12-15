@@ -1,25 +1,4 @@
-from pgdriver import\
-    smallint,\
-    bigint,\
-    text,\
-    double,\
-    byte,\
-    timestamptz,\
-    timetz,\
-    date,\
-    boolean,\
-    char,\
-    with_check,\
-    with_comment,\
-    check,\
-    comment,\
-    default_value,\
-    with_default_value,\
-    FlowException,\
-    NodeException,\
-    literal,\
-    this,\
-    field
+import pgdriver as pg
 import numpy as np
 
 
@@ -30,23 +9,23 @@ def test_builtin_definition_is_correctly_formed() -> None:
         assert 'type' in definition
         assert definition['type'] == builtin
 
-    test_builtin_definition_inner(bigint)
-    test_builtin_definition_inner(smallint)
-    test_builtin_definition_inner(text)
-    test_builtin_definition_inner(double)
-    test_builtin_definition_inner(byte)
-    test_builtin_definition_inner(char)
-    test_builtin_definition_inner(timestamptz)
-    test_builtin_definition_inner(timetz)
-    test_builtin_definition_inner(date)
-    test_builtin_definition_inner(boolean)
+    test_builtin_definition_inner(pg.int8)
+    test_builtin_definition_inner(pg.int2)
+    test_builtin_definition_inner(pg.text)
+    test_builtin_definition_inner(pg.float8)
+    test_builtin_definition_inner(pg.bytea)
+    test_builtin_definition_inner(pg.char)
+    test_builtin_definition_inner(pg.timestamptz)
+    test_builtin_definition_inner(pg.timetz)
+    test_builtin_definition_inner(pg.date)
+    test_builtin_definition_inner(pg.bool)
 
 
 def test_builtin_domain_definition_is_correctly_formed() -> None:
     # CHECK FOR ABSCENCE OF COMMENT
-    @with_check(name='domain_greater_than_0', predicate=this() >= literal(0))
-    @with_comment('this is a test comment')
-    class domain0(smallint):
+    @pg.check(name='domain_greater_than_0', predicate=pg.this() >= pg.literal(0))
+    @pg.comment('this is a test comment')
+    class domain0(pg.int2):
         pass
 
     assert hasattr(domain0, '__pg_definition')
@@ -54,17 +33,17 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert 'type' in definition
     assert definition['type'] == domain0
     assert 'base_type' in definition
-    assert definition['base_type'] == smallint
+    assert definition['base_type'] == pg.int2
     assert 'comment' in definition
-    assert isinstance(definition['comment'], comment)
+    assert isinstance(definition['comment'], pg.meta.comment)
     assert definition['comment'].value == 'this is a test comment'
     assert 'check' in definition
     assert definition['check'].name == 'domain_greater_than_0'
     assert str(definition['check']) == '(VALUE >= 0)'
 
     # CHECK FOR ABSCENCE OF COMMENT
-    @with_check(name='domain_greater_than_0', predicate=this() >= literal(0))
-    class domain1(smallint):
+    @pg.check(name='domain_greater_than_0', predicate=pg.this() >= pg.literal(0))
+    class domain1(pg.int2):
         pass
 
     assert hasattr(domain1, '__pg_definition')
@@ -72,7 +51,7 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert 'type' in definition
     assert definition['type'] == domain1
     assert 'base_type' in definition
-    assert definition['base_type'] == smallint
+    assert definition['base_type'] == pg.int2
     assert 'comment' in definition
     assert definition['comment'] is None
     assert 'check' in definition
@@ -80,8 +59,8 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert str(definition['check']) == '(VALUE >= 0)'
 
     # CHECK FOR ABSENCE OF COMMENT
-    @with_check(name='domain_greater_than_0', predicate=this() >= literal(0))
-    class domain2(smallint):
+    @pg.check(name='domain_greater_than_0', predicate=pg.this() >= pg.literal(0))
+    class domain2(pg.int2):
         pass
 
     assert hasattr(domain2, '__pg_definition')
@@ -89,7 +68,7 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert 'type' in definition
     assert definition['type'] == domain2
     assert 'base_type' in definition
-    assert definition['base_type'] == smallint
+    assert definition['base_type'] == pg.int2
     assert 'comment' in definition
     assert definition['comment'] is None
     assert 'check' in definition
@@ -97,8 +76,8 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert str(definition['check']) == '(VALUE >= 0)'
 
     # CHECK FOR ABSENCE OF CHECK
-    @with_comment('test comment')
-    class domain3(smallint):
+    @pg.comment('test comment')
+    class domain3(pg.int2):
         pass
 
     assert hasattr(domain3, '__pg_definition')
@@ -106,15 +85,15 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert 'type' in definition
     assert definition['type'] == domain3
     assert 'base_type' in definition
-    assert definition['base_type'] == smallint
+    assert definition['base_type'] == pg.int2
     assert 'comment' in definition
-    assert isinstance(definition['comment'], comment)
+    assert isinstance(definition['comment'], pg.meta.comment)
     assert definition['comment'].value == 'test comment'
     assert 'check' in definition
     assert definition['check'] is None
 
     # CHECK FOR ABSENCE OF COMMENT CHECK AND COMMENT
-    class domain4(smallint):
+    class domain4(pg.int2):
         pass
 
     assert hasattr(domain4, '__pg_definition')
@@ -122,16 +101,16 @@ def test_builtin_domain_definition_is_correctly_formed() -> None:
     assert 'type' in definition
     assert definition['type'] == domain4
     assert 'base_type' in definition
-    assert definition['base_type'] == smallint
+    assert definition['base_type'] == pg.int2
     assert 'comment' in definition
     assert definition['comment'] is None
     assert 'check' in definition
     assert definition['check'] is None
 
 
-def test_builtin_domain_inherits_check_constraint() -> None:
-    @with_check(name='domain_greater_than_0', predicate=this() >= literal(0))
-    class domain0(smallint):
+def test_builtin_domain_inherits_meta_constraint() -> None:
+    @pg.check(name='domain_greater_than_0', predicate=pg.this() >= pg.literal(0))
+    class domain0(pg.int2):
         pass
 
     class domain1(domain0):
@@ -156,12 +135,12 @@ def test_builtin_domain_inherits_check_constraint() -> None:
     assert definition['check'] is None
 
 
-def test_builtin_domain_merges_inherited_check_constraint() -> None:
-    @with_check(name='domain_greater_than_0', predicate=this() >= literal(0))
-    class domain0(smallint):
+def test_builtin_domain_merges_inherited_meta_constraint() -> None:
+    @pg.check(name='domain_greater_than_0', predicate=pg.this() >= pg.literal(0))
+    class domain0(pg.int2):
         pass
 
-    @with_check(name='domain_less_than_5', predicate=this() <= literal(5))
+    @pg.check(name='domain_less_than_5', predicate=pg.this() <= pg.literal(5))
     class domain1(domain0):
         pass
 
@@ -195,10 +174,10 @@ def test_builtin_domain_merges_inherited_check_constraint() -> None:
 
 
 def test_builtin_domain_takes_default_value() -> None:
-    class domain0(smallint):
+    class domain0(pg.int2):
         pass
 
-    @with_default_value(2)
+    @pg.default_value(2)
     class domain1(domain0):
         pass
 
@@ -206,37 +185,37 @@ def test_builtin_domain_takes_default_value() -> None:
     definition: dict[str, str] = getattr(domain1, '__pg_definition')()
     assert 'default_value' in definition
     assert definition['default_value'] is not None
-    assert isinstance(definition['default_value'], default_value)
-    assert isinstance(definition['default_value'].default, literal)
+    assert isinstance(definition['default_value'], pg.meta.default_value)
+    assert isinstance(definition['default_value'].default, pg.literal)
     assert isinstance(definition['default_value'].default._lit, domain1)
     assert definition['default_value'].default._lit == 2
 
 
 def test_builtin_timestamptz_correctly_instantiated() -> None:
-    tm = timetz('10:50')
+    tm = pg.timetz('10:50')
     assert str(tm) == '10:50:00'
     try:
-        dt = date('10:50')
+        dt = pg.date('10:50')
         assert False
     except ValueError as e:
         assert str(e) == 'Invalid isoformat string: \'10:50\''
     try:
-        dt = timestamptz('10:50')
+        dt = pg.timestamptz('10:50')
         assert False
     except ValueError as e:
         assert str(e) == 'Invalid isoformat string: \'10:50\''
-    dt = date('2020-10-10')
+    dt = pg.date('2020-10-10')
     assert str(dt) == '2020-10-10'
-    dt = date('2020-10-10')
+    dt = pg.date('2020-10-10')
     assert str(dt) == '2020-10-10'
-    tp = timestamptz('2024-11-22 15:30:00+03:00')
+    tp = pg.timestamptz('2024-11-22 15:30:00+03:00')
     assert str(tp) == '2024-11-22 15:30:00'
 
 
-def test_builtin_timestamptz_checks() -> None:
-    @with_check(name='test_domain0__ge2024',
-                   predicate=this() >= literal('2024-10-10T10:20'))
-    class domain0(timestamptz):
+def test_builtin_timestamptz_metas() -> None:
+    @pg.check(name='test_domain0__ge2024',
+                   predicate=pg.this() >= pg.literal('2024-10-10T10:20'))
+    class domain0(pg.timestamptz):
         pass
     try:
         domain0('2024-10-09T10:19')
@@ -244,9 +223,9 @@ def test_builtin_timestamptz_checks() -> None:
     except ValueError as e:
         assert str(e) == 'test_domain0__ge2024: constraint validation failed for value "2024-10-09 10:19:00"'
 
-    @with_check(name='test_domain0__ge10_10',
-                   predicate=this() >= literal('10:10'))
-    class domain1(timetz):
+    @pg.check(name='test_domain0__ge10_10',
+                   predicate=pg.this() >= pg.literal('10:10'))
+    class domain1(pg.timetz):
         pass
     try:
         domain1('10:09')
@@ -254,9 +233,9 @@ def test_builtin_timestamptz_checks() -> None:
     except ValueError as e:
         assert str(e) == 'test_domain0__ge10_10: constraint validation failed for value "10:09:00"'
 
-    @with_check(name='test_domain0__ge2024',
-                   predicate=this() >= literal('2024-10-10'))
-    class domain1(date):
+    @pg.check(name='test_domain0__ge2024',
+                   predicate=pg.this() >= pg.literal('2024-10-10'))
+    class domain1(pg.date):
         pass
     try:
         domain1('2024-10-09')
@@ -266,8 +245,8 @@ def test_builtin_timestamptz_checks() -> None:
 
 
 def test_check_respected_when_used_in_ndarray() -> None:
-    @with_check(name='domain_greater_than_0', predicate=this() >= literal(0))
-    class domain0(smallint):
+    @pg.check(name='domain_greater_than_0', predicate=pg.this() >= pg.literal(0))
+    class domain0(pg.int2):
         pass
     # TODO: when creating an nparray even though its created with domain0 as dtype
     # it falls back to numpy underlying type, branching out the type validations in place.

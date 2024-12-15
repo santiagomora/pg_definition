@@ -136,10 +136,7 @@ class _AdapterRegistry:
         psyenum.register_enum(info, None, cls)
 
     def register_type(self, cls: type, schema: str, name: str) -> None:
-        if schema == 'pg_catalog':
-            info = TypeInfo.fetch(self._conn, name)
-        else:
-            info = TypeInfo.fetch(self._conn, f'{schema}.{name}')
+        info = TypeInfo.fetch(self._conn, f'{schema}.{name}')
         self._type_oid[cls] = info.oid
         loader: type = type(f'{schema}_{name}_Loader', (_BuiltinLoader, ),
                             {'base_type': cls})
