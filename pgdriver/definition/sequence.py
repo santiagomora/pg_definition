@@ -83,6 +83,8 @@ class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['schema'] = None
         definition['base_type'] = accumulator.get_definition('base_type', 'extraction')
         definition['comment'] = None
+        definition['type'] = target
+        definition['kind'] = 'sequence'
         definition['min_value'] = None
         definition['max_value'] = None
         definition['increment'] = None

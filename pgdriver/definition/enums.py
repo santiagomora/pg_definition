@@ -104,6 +104,7 @@ class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['comment'] = None
         definition['schema'] = None
+        definition['kind'] = 'enum'
         definition['members'] = accumulator.get_definition('members', 'extraction')
         accumulator.add_definition('final', definition)
 
@@ -135,6 +136,7 @@ class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
+        definition['kind'] = 'domain'
         definition['default_value'] = None
         accumulator.add_definition('final', definition)
 

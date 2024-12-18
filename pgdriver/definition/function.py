@@ -1,14 +1,10 @@
-from abc import\
-    abstractmethod,\
-    ABC
 from typing import\
     Generic,\
     TypeVar,\
     Union,\
     Any,\
     get_args,\
-    Optional,\
-    Iterator
+    Optional
 from pydantic.fields import\
     FieldInfo
 from .builtin import\
@@ -20,16 +16,10 @@ from .table import\
     table
 from .enums import\
     enums
-from .builtin import\
-    int8
 from psycopg import \
-    AsyncConnection,\
-    AsyncTransaction,\
     AsyncCursor
 from collections.abc import\
     AsyncIterator
-from contextlib import\
-    asynccontextmanager
 from pydantic import\
     BaseModel,\
     create_model
@@ -48,7 +38,7 @@ from .common.inspection import\
 import functools
 
 
-__all__ = ['single_result_function', 'perform_function', 'single_result_function']
+__all__ = ['single_result_function', 'discard_result_function', 'single_result_function']
 
 
 V = Union[composite, table, enums, builtin_instance]
@@ -64,7 +54,7 @@ class function_builtin(type):
         cls, clsname: str, clsbases: tuple[type],
         clsdict: dict[str, Any], **kwargs
     ) -> type:
-        is_base = clsname in ('function_builtin', 'perform_function', 'set_returning_function', 'single_result_function', 'function')
+        is_base = clsname in ('function_builtin', 'discard_result_function', 'set_returning_function', 'single_result_function', 'function')
         if len(clsbases) > 1 and not is_base:
             raise TypeError(f'Class {cls} doesnt allow multiple bases')
         rettype: type = super().__new__(cls, clsname, clsbases, clsdict)
@@ -137,8 +127,9 @@ class _FunctionStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
         definition['schema'] = None
-        definition['name'] = target.__name__
+        definition['type'] = target
         definition['comment'] = None
+        definition['kind'] = 'function'
         definition['arguments'] = accumulator.get_definition('arguments', 'extraction')
         definition['return_type'] = accumulator.get_definition('return_type', 'extraction')
         accumulator.add_definition('final', definition)
@@ -192,7 +183,7 @@ class set_returning_function(function, Generic[K]):
             yield result[0]
 
 
-class perform_function(function):
+class discard_result_function(function):
     async def __new__(cls, cursor: AsyncCursor, **kwargs: dict[str, V]) -> None:
         instance = super(function, cls).__new__(cls)
         kwargs = cls._validate_arguments(kwargs, instance)

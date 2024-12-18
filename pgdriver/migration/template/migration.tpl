@@ -1,10 +1,22 @@
-from pgdriver.migration import\
-    sql_builder
+import pgdriver.migration.builder\
+    as bd
 from typing import\
-    Optional
+    Optional,\
+    Generator
+from enum import\
+    Enum
 
 
-DEPENDS_ON: Optional[int] = {depends_on}
+class preconditions(Enum):
+    pass
+
+
+class postconditions(Enum):
+    pass
+
+
+# This is a list of the postconditions enforced by other migrations
+DEPENDS_ON: Optional[list[int]] = {depends_on}
 MIGRATION_ID: int = {migration_id}
 DATAFIX_ID: Optional[int] = {datafix_id}
 
@@ -13,9 +25,9 @@ DATAFIX_ID: Optional[int] = {datafix_id}
 #            set to perform to update the postgres objects.
 
 
-def up() -> None:
+def up() -> Generator[bd.SQLSentenceParams, None, None]:
     pass
 
 
-def down() -> None:
+def down() -> Generator[bd.SQLSentenceParams, None, None]:
     pass

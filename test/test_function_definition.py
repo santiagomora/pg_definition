@@ -6,26 +6,11 @@ from typing import\
     Optional
 import datetime
 import sys
-sys.path.append('./')
-from test_app.types import\
-    post,\
-    comment,\
-    comment_post,\
-    author,\
-    post_status_enum
-from test_app.functions import\
-    get_post_by_id,\
-    get_author_by_id,\
-    get_post_comments,\
-    create_post,\
-    create_comment,\
-    get_author_posts,\
-    as_comment_post
-from test_app.extension import\
-    test_app_extension as _test_app_extension
 import pytest
-from pgdriver.definition.extension import\
-    base_extension
+sys.path.append('./')
+from test_app import\
+    test,\
+    test_app_extension as _test_app_extension
 
 
 dsn_test_db: str = 'host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En'
@@ -41,8 +26,8 @@ def test_function_definition_flow_executed_correctly() -> None:
     def0 = getattr(test_func, '__pg_definition')()
     assert 'comment' in def0
     assert def0['comment'] is None
-    assert 'name' in def0
-    assert def0['name'] == test_func.__name__
+    assert 'type' in def0
+    assert def0['type'] == test_func
     assert 'return_type' in def0
     assert def0['return_type'] is pg.int8
     assert 'arguments' in def0
@@ -165,7 +150,7 @@ def test_function_definition_flow_executed_correctly() -> None:
 @pytest.mark.asyncio
 async def test_sql_function_gets_parameters_correctly() -> None:
     with pg.adapter_registry(dsn_test_db) as ar:
-        base_extension.register_types(ar)
+        pg.base_extension.register_types(ar)
         _test_app_extension.register_types(ar)
 
     # NOTE test that function store post correctly
@@ -173,48 +158,48 @@ async def test_sql_function_gets_parameters_correctly() -> None:
         async with conn.cursor() as cur:
             await cur.execute("SET SEARCH_PATH to test;")
             # NOTE test single result function executed correctly
-            post_1: post = await get_post_by_id(cur, p_post_id=1)
-            assert isinstance(post_1, post)
+            post_1: test.post = await test.get_post_by_id(cur, p_post_id=1)
+            assert isinstance(post_1, test.post)
             assert post_1.content == 'test content 1'
             assert post_1.title == 'test title 1'
-            assert post_1.status == post_status_enum.published
-            post_1_author: author = await get_author_by_id(
+            assert post_1.status == test.post_status_enum.published
+            post_1_author: test.author = await test.get_author_by_id(
                 cur, p_author_id=post_1.author_id)
             assert post_1_author.name == 'author 1'
             assert post_1_author.id == 1
 
             # NOTE test set returning function executed correctly
-            post_comments: list[comment] = [
-                c async for c in get_post_comments(
+            post_comments: list[test.comment] = [
+                c async for c in test.get_post_comments(
                     cur, p_post=post_1)]
-            assert all([isinstance(c, comment) for c in post_comments])
+            assert all([isinstance(c, test.comment) for c in post_comments])
             assert all([c.post_id == 1 for c in post_comments])
-            author_posts: list[comment] = [
-                c async for c in get_author_posts(
+            author_posts: list[test.comment] = [
+                c async for c in test.get_author_posts(
                     cur, p_author=post_1_author)]
             assert all([p.author_id == 1 for p in author_posts])
-            new_post: post = await create_post(
+            new_post: test.post = await test.create_post(
                 cur, p_author=post_1_author,
                 p_content='this is a new post',
                 p_title='new post title')
             assert new_post.author_id == post_1_author.id
             assert new_post.content == 'this is a new post'
             assert new_post.title == 'new post title'
-            new_post_comment: comment = await create_comment(
+            new_post_comment: test.comment = await test.create_comment(
                 cur, p_author=post_1_author,
                 p_content='new post test comment',
                 p_post=new_post)
             assert new_post_comment.author_id == post_1_author.id
             assert new_post_comment.content == 'new post test comment'
             assert new_post_comment.post_id == new_post.id
-            new_post_comment: comment = await create_comment(
+            new_post_comment: test.comment = await test.create_comment(
                 cur, p_author=post_1_author,
                 p_content='(new post test comment)', p_post=new_post)
-            cp: comment_post = await as_comment_post(
+            cp: test.comment_post = await test.as_comment_post(
                 cur, p_post=new_post, p_comment=new_post_comment,
                 p_description='test description', p_author=post_1_author)
-            assert isinstance(cp, comment_post)
-            assert isinstance(cp.post, post)
-            assert isinstance(cp.comment, comment)
+            assert isinstance(cp, test.comment_post)
+            assert isinstance(cp.post, test.post)
+            assert isinstance(cp.comment, test.comment)
             assert isinstance(cp.description, pg.text)
-            assert isinstance(cp.author, author)
+            assert isinstance(cp.author, test.author)

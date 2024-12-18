@@ -12,7 +12,7 @@ from psycopg.abc import\
 from typing import \
     Any,\
     Union
-from .definition.common.model import\
+from ..definition.common.model import\
     base_model
 
 

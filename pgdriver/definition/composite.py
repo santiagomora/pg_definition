@@ -106,6 +106,7 @@ class _CompositeStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['attributes'] = accumulator.get_definition('attributes', 'extraction')
         definition['comment'] = None
         definition['schema'] = None
+        definition['kind'] = 'composite'
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
@@ -221,6 +222,7 @@ class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
+        definition['kind'] = 'domain'
         definition['attributes'] = accumulator.get_definition('attributes', 'extraction')
         definition['check'] = accumulator.get_definition('check_constraints', 'extraction')
         accumulator.add_definition('final', definition)

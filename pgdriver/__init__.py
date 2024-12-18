@@ -32,54 +32,64 @@ from .definition.sequence import\
     increment,\
     max_value,\
     min_value
-import pgdriver.definition.builtin as build
 from .definition.function import\
     single_result_function,\
     set_returning_function,\
-    perform_function
+    discard_result_function
 from datetime import\
     datetime,\
     time,\
     date as _date
-from .adapter_registry import\
+from .base.adapter_registry import\
     adapter_registry
-from .extension import\
+from .base.extension import\
     Extension
 from typing_extensions import\
     Annotated
 from enum import\
     auto
+from .definition.permission import\
+    permission,\
+    grant
+from .definition.schema import\
+    schema
+from ._schema import\
+    pg_catalog
+from ._extension import\
+    base_extension
+from .definition.builtin import\
+    builtin
 
 
-__all__ = ['composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'perform_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value']
+__all__ = ['pg_catalog', 'builtin', 'permission', 'grant', 'base_extension', 'schema', 'composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'discard_result_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value']
 
 
-meta.check.type_compatibility.register(build.int8, Number)
-meta.check.type_compatibility.register(build.int4, Number)
-meta.check.type_compatibility.register(build.int2, Number)
-meta.check.type_compatibility.register(build.float8, Number)
-meta.check.type_compatibility.register(build.float4, Number)
-meta.check.type_compatibility.register(build.timetz, time)
-meta.check.type_compatibility.register(build.date, _date)
-meta.check.type_compatibility.register(build.text, str)
-meta.check.type_compatibility.register(build.timestamptz, datetime)
-meta.check.type_compatibility.register(build.bool, bool)
+meta.check.type_compatibility.register(pg_catalog.int8, Number)
+meta.check.type_compatibility.register(pg_catalog.int4, Number)
+meta.check.type_compatibility.register(pg_catalog.int2, Number)
+meta.check.type_compatibility.register(pg_catalog.float8, Number)
+meta.check.type_compatibility.register(pg_catalog.float4, Number)
+meta.check.type_compatibility.register(pg_catalog.timetz, time)
+meta.check.type_compatibility.register(pg_catalog.date, _date)
+meta.check.type_compatibility.register(pg_catalog.text, str)
+meta.check.type_compatibility.register(pg_catalog.timestamptz, datetime)
+meta.check.type_compatibility.register(pg_catalog.bool, bool)
 meta.check.type_compatibility.register(composite, composite)
+meta.check.type_compatibility.register(table, composite)
 
 
-builtin = build.builtin
-int4 = build.int4
-int8 = build.int8
-int2 = build.int2
-float4 = build.float4
-text = build.text
-char = build.char
-float8 = build.float8
-bytea = build.bytea
-timestamptz = build.timestamptz
-timetz = build.timetz
-date = build.date
-bool = build.bool
+int4 = pg_catalog.int4
+int8 = pg_catalog.int8
+int2 = pg_catalog.int2
+float4 = pg_catalog.float4
+text = pg_catalog.text
+char = pg_catalog.char
+float8 = pg_catalog.float8
+bytea = pg_catalog.bytea
+timestamptz = pg_catalog.timestamptz
+timetz = pg_catalog.timetz
+date = pg_catalog.date
+bool = pg_catalog.bool
 
 
 class check:
@@ -120,18 +130,6 @@ def comment(value: str):
         assert definition['comment'] is None
         assert isinstance(value, str)
         definition['comment'] = meta.comment(value)
-        return target
-
-    return _add_to_definition
-
-
-def in_schema(schema_name: str):
-
-    def _add_to_definition(target: type):
-        definition = getattr(target, '__pg_definition')()
-        assert definition['schema'] is None
-        assert isinstance(schema_name, str)
-        definition['schema'] = schema_name
         return target
 
     return _add_to_definition

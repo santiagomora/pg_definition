@@ -9,7 +9,7 @@ class StrictInt:
     @classmethod
     def validate(cls, value, validation_info):
         if not isinstance(value, int):
-            raise TypeError(f"Value must be an integer, got {type(value).__name__}")
+            raise TypeError(f"Value must be an int4, got {type(value).__name__}")
         return value
 
 

@@ -109,7 +109,8 @@ class _BuiltinStoreFinalDefinition(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, str] = dict()
         definition['type'] = target
-        definition['schema'] = 'pg_catalog'
+        definition['schema'] = None
+        definition['kind'] = 'builtin'
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
@@ -126,6 +127,7 @@ class _BuiltinDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
+        definition['kind'] = 'domain'
         definition['check'] = accumulator.get_definition('check', 'extraction')
         definition['default_value'] = None
         accumulator.add_definition('final', definition)

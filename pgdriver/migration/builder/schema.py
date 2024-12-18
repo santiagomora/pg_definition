@@ -2,55 +2,28 @@ from typing import\
     Any,\
     Optional,\
     Union,\
-    TypeAlias,\
     Callable
 from typing_extensions import\
     Self
-from abc import\
-    abstractmethod,\
-    ABC
 import pgdriver as pg
 from psycopg import\
     sql
+from .common import\
+    Component,\
+    Builder,\
+    WrapsComponent,\
+    SQLSentenceParams,\
+    GeneratesSQLSentence
 
 
-__all__ = ['create', 'drop_enum', 'drop_composite', 'drop_domain', 'drop_table',
-'drop_sequence']
+__all__ = ['builder']
 
 
-# TODO think ConstraintBuilder will be deprecated
-# TODO para convertir a SQL correctamente en los docs de psycopg esta la siguiente documentacion.  Por ahora testeamos que convierta a strings correctamente, pero vamos a tener que verificar 
-# SQL("INSERT INTO {} VALUES (%s)").format(Identifier('numbers')),
-#     (10,))
-class Component:
-    def __init__(
-        self, name: str, parent: Optional['Component'] = None,
-        definition: Optional[dict[str, Any]] = None
-    ) -> None:
-        self.name = name
-        self.parent = parent
-        self.definition = definition
-
-
-class Builder(ABC):
-    pass
-
-
-class WrapsComponent:
-    def __init__(self, component: Component) -> None:
-        self.component = component
-
-
-# string con la sentencia, una lista de identificadores, una lista de parametros
-SQLSentenceParams: TypeAlias = tuple[str, list[sql.Identifier], list[str]]
-
-
-class GeneratesSQLSentence(ABC):
-    @abstractmethod
-    def sql_sentence_params(self) -> SQLSentenceParams:
-        pass
-
-
+# TODO: add create function builder
+# TODO: it must be possible to grant/revoke from roles on tables, sequences and functions
+# TODO: when creating a table or a sequence it must be possible to revoke all permissions from it from all roles
+# TODO: when creating a table or a sequence it must be possible to revoke all permissions from it
+# TODO: add create role builder for permissions as groups of grants over defined objects, and roles as groups of permissions
 class Alter(WrapsComponent, GeneratesSQLSentence):
     def __init__(
         self, component: Component, change: Union['Add', 'Drop', 'Rename', 'Set']
@@ -129,7 +102,7 @@ class Settable(ChecksDefinitionPresence):
 class Type(Component, Settable):
     class Set(Set):
         def sql_sentence_params(self) -> GeneratesSQLSentence:
-            return ('TYPE {}.{}', [sql.Identifier(self.component.definition['schema']), sql.Identifier(self.component.definition['type'].__name__)], [])
+            return ('TYPE {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
 
 
 class TypeBuilder(Builder):
@@ -225,14 +198,14 @@ class Expression(Component, Droppable, Addable):
 class Default(Component, Droppable, Settable):
     class Set(Set):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            default: Any = None
             if isinstance(self.component.definition, pg.meta.default_value):
                 return ('SET DEFAULT {}', [sql.SQL(str(self.component.definition))], [], )
             elif isinstance(self.component.definition, pg.meta.default_nextval):
                 seq_def: dict[str, Any] = getattr(self.component.definition.seq, '__pg_definition')()
                 return ('SET DEFAULT nextval(%s)', [], [f'{seq_def["schema"]}.{self.component.definition.seq.__name__}'], )
             else:
-                raise ValueError(f'Unkown default value: "{self.component.definition}"')
+                raise ValueError(f'Unkown default value type: "{self.component.definition}"')
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP DEFAULT', [], [], )
@@ -266,7 +239,7 @@ class Column(Component, Alterable, Droppable, Addable, Renamable):
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
-            return ('ADD COLUMN {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema']), sql.Identifier(tdef['type'].__name__)], [], )
+            return ('ADD COLUMN {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
@@ -319,7 +292,7 @@ class Index(Component, Droppable, Renamable, Creatable, Alterable):
             placeholders: list[str] = ['{}']*len(columns)
             unique: bool = self.component.definition['unique']
             tp: pg.index_type = str(self.component.definition['type'].value).upper()
-            schema = self.component.parent.definition['schema']
+            schema = self.component.parent.definition['schema'].__name__
             return (f'CREATE{" UNIQUE" if unique else ""} ' + 'INDEX {} ON {}.{} USING ' + tp + f' ({", ".join(placeholders)})', [sql.Identifier(self.component.name), sql.Identifier(schema), sql.Identifier(self.component.parent.name)] + columns, [])
 
     class Alter(Alter):
@@ -365,7 +338,7 @@ class Table(Component, Droppable, Creatable, Alterable, Renamable):
             base_classes: Optional[list[type]] = self.component.definition['base_classes']
             for base in [] if base_classes is None else base_classes:
                 definition: dict[str, Any] = getattr(base, '__pg_definition')()
-                bases += [sql.Identifier(definition['schema']), sql.Identifier(definition['type'].__name__)]
+                bases += [sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
                 placeholders += ['{}.{}']
             return ('CREATE TABLE {}.{} () INHERITS ' + f'({", ".join(placeholders)})' if len(bases) > 0 else 'CREATE TABLE {}.{} ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + bases, [])
 
@@ -418,24 +391,6 @@ class TableBuilder(list[Any], Builder):
         self.append(t.alter(self.table.rename_from(old_name)))
         return self
 
-    def create_index(self, name: str, unique: bool = False) -> Self:
-        defined_in: str = 'unique_constraints' if unique else 'indexes'
-        ix: Index = Index(name, self.table, self.table.definition[defined_in][name])
-        ix.unique = unique
-        self.append(ix.create())
-        return self
-
-    def drop_index(self, name: str, unique: bool = False) -> Self:
-        defined_in: str = 'unique_constraints' if unique else 'indexes'
-        ix: Index = Index(name, self.table, self.table.definition[defined_in].get(name, None))
-        ix.unique = unique
-        self.append(ix.drop())
-        return self
-
-    def alter_index(self, name: str, unique: bool) -> 'IndexBuilder':
-        defined_in: str = 'unique_constraints' if unique else 'indexes'
-        return IndexBuilder(self, Column(name, self.table, self.table.definition[defined_in][name]))
-
     def create(self) -> Self:
         self.append(self.table.create())
         return self
@@ -450,7 +405,7 @@ class Attribute(Component, Renamable, Addable, Droppable, Alterable):
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
-            return ('ADD ATTRIBUTE {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema']), sql.Identifier(tdef['type'].__name__)], [], )
+            return ('ADD ATTRIBUTE {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
@@ -590,12 +545,16 @@ class EnumBuilder(list[Any], Builder):
         self.append(self.enums.create())
         return self
 
+    def drop(self) -> Self:
+        self.append(self.enums.drop())
+        return self
+
 
 class Domain(Component, Creatable, Alterable, Renamable, Droppable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
             tdef: dict[str, Any] = getattr(self.component.definition["base_type"], '__pg_definition')()
-            return ('CREATE DOMAIN {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(tdef['schema']), sql.Identifier(tdef['type'].__name__)], [], )
+            return ('CREATE DOMAIN {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
@@ -636,7 +595,7 @@ class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
             base_tdef = getattr(self.component.definition["base_type"], '__pg_definition')()
-            return ('CREATE SEQUENCE {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(base_tdef['schema']), sql.Identifier(base_tdef['type'].__name__)], [], )
+            return ('CREATE SEQUENCE {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(base_tdef['schema'].__name__), sql.Identifier(base_tdef['type'].__name__)], [], )
 
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
@@ -646,7 +605,7 @@ class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
     class Type(Type):
         class Set(Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('AS {}.{}', [sql.Identifier(self.component.definition['schema']), sql.Identifier(self.component.definition['type'].__name__)], [])
+                return ('AS {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
 
     class MinValue(Component, Settable):
         class Set(Set):
@@ -728,44 +687,50 @@ class SequenceBuilder(list[Any], Builder):
         self.append(self.sequence.create())
         return self
 
+    def drop(self) -> Self:
+        self.append(self.sequence.drop())
+        return self
+
 
 class Schema(Component):
     pass
 
 
-def builder(tp: type) -> Builder:
-    name: str = tp.__name__
-    definition: dict[str, Any] = getattr(tp, '__pg_definition')()
-    schema: Schema = Schema(definition['schema'], None, None)
-    if issubclass(tp, pg.table):
-        return TableBuilder(Table(name, schema, definition))
-    elif isinstance(tp, pg.sequence):
-        return SequenceBuilder(Sequence(name, schema, definition))
-    elif 'base_type' in definition:
-        return DomainBuilder(Domain(name, schema, definition))
-    elif issubclass(tp, pg.composite):
-        return CompositeBuilder(Composite(name, schema, definition))
-    elif issubclass(tp, pg.enums):
-        return EnumBuilder(Enum(name, schema, definition))
-    else:
-        raise TypeError(f'Type {tp} not supported')
+class SchemaBuilder(list[Any], Builder):
+    def __init__(
+        self, schema: Schema
+    ) -> None:
+        list.__init__(self)
+        self.schema = schema
+
+    def _search_object(self, name: str) -> Optional[type]:
+        return self.schema.definition['objects'].get(name, None)
+
+    def _get_builder(
+        self, name: str, builder_cls: type, cls: type
+    ) -> Builder:
+        tp: Optional[type] = self._search_object(name)
+        if tp is None:
+            return builder_cls(cls(name, self.schema, None))
+        else:
+            return builder_cls(cls(name, self.schema, getattr(tp, '__pg_definition')()))
+
+    def table(self, name: str) -> Self:
+        return self._get_builder(name, TableBuilder, Table)
+
+    def sequence(self, name: str) -> Self:
+        return self._get_builder(name, SequenceBuilder, Sequence)
+
+    def enum(self, name: str) -> Self:
+        return self._get_builder(name, EnumBuilder, Enum)
+
+    def composite(self, name: str) -> Self:
+        return self._get_builder(name, CompositeBuilder, Composite)
+
+    def domain(self, name: str) -> Self:
+        return self._get_builder(name, DomainBuilder, Domain)
 
 
-def drop_enum(schema: str, name: str) -> Enum.Drop:
-    return Enum(name, Schema(schema), None).drop()
-
-
-def drop_composite(schema: str, name: str) -> Composite.Drop:
-    return Composite(name, Schema(schema), None).drop()
-
-
-def drop_domain(schema: str, name: str) -> Domain.Drop:
-    return Domain(name, Schema(schema), None).drop()
-
-
-def drop_table(schema: str, name: str) -> Table.Drop:
-    return Domain(name, Schema(schema), None).drop()
-
-
-def drop_sequence(schema: str, name: str) -> Sequence.Drop:
-    return Sequence(name, Schema(schema), None).drop()
+def builder(schema: type) -> Builder:
+    schema: Schema = Schema(schema.__name__, None, getattr(schema, '__pg_definition')())
+    return SchemaBuilder(schema)

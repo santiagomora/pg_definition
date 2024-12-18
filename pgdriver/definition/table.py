@@ -251,6 +251,7 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['foreign_keys'] = {}
         definition['unique_constraints'] = {}
         definition['indexes'] = {}
+        definition['kind'] = 'table'
         definition['check'] = accumulator.get_definition('check_constraints', 'extraction')
         accumulator.add_definition('final', definition)
 

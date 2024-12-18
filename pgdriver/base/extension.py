@@ -4,10 +4,12 @@ from abc import\
     ABC
 from .adapter_registry import\
     _AdapterRegistry
+from pgdriver.definition.schema import\
+    schema
 
 
 class Extension(ABC):
-    def __init__(self, schema: str):
+    def __init__(self, schema: schema):
         self.schema = schema
 
     def composites(self) -> Generator[type, None, None]:
@@ -34,10 +36,10 @@ class Extension(ABC):
 
     def register_types(self, ar: _AdapterRegistry) -> None:
         for composite in self.composites():
-            ar.register_composite(composite, self.schema, self.get_type_psycopg_name(composite))
+            ar.register_composite(composite, self.schema.__name__, self.get_type_psycopg_name(composite))
         for table in self.tables():
-            ar.register_composite(table, self.schema, self.get_type_psycopg_name(table))
+            ar.register_composite(table, self.schema.__name__, self.get_type_psycopg_name(table))
         for en in self.enums():
-            ar.register_enum(en, self.schema, self.get_type_psycopg_name(en))
+            ar.register_enum(en, self.schema.__name__, self.get_type_psycopg_name(en))
         for tp in self.types():
-            ar.register_type(tp, self.schema, self.get_type_psycopg_name(tp))
+            ar.register_type(tp, self.schema.__name__, self.get_type_psycopg_name(tp))
