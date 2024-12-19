@@ -8,10 +8,8 @@ from .inspection import\
     extract_type
 from typing import\
     Optional
-from typing import\
-    Iterator
-from pydantic.fields import\
-    FieldInfo
+from .inspection import\
+    is_pg_type
 
 
 class CommonValidateFieldsBaseTypeNode(SingleChoiceDefinitionFlowNode):
@@ -31,23 +29,9 @@ class CommonValidateFieldsBaseTypeNode(SingleChoiceDefinitionFlowNode):
         # mira el type base del campo y valida que este entre los requeridos
         errors: list[str] = []
         for name, info in extract_definition_fields(target):
-            is_subclass_of_required: bool = False
-            for required in self._type_subclass:
-                if issubclass(extract_type(info.annotation), required):
-                    is_subclass_of_required = True
-            is_instance_of_required: bool = False
-            if not is_subclass_of_required:
-                for required in self._type_instance:
-                    if isinstance(extract_type(info.annotation), required):
-                        is_instance_of_required = True
-            if is_subclass_of_required or is_instance_of_required:
-                continue
-            elif not is_instance_of_required:
-                super_instances_str: str = ', '.join([str(e) for e in self._type_instance])
-                errors.append(f'Field {name} type must be a subclass of {super_instances_str}')
-            else:
-                super_classes_str: str = ', '.join([str(e) for e in self._type_subclass])
-                errors.append(f'Field {name} type must be an instance of {super_classes_str}')
+            errors += is_pg_type(
+                name, extract_type(info.annotation), self._type_subclass, self._type_instance
+            )
         if len(errors) > 0:
             raise NodeException(self.name, errors)
 

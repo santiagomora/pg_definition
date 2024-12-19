@@ -35,15 +35,12 @@ from .definition.sequence import\
 from .definition.function import\
     single_result_function,\
     set_returning_function,\
-    discard_result_function
+    discard_result_function,\
+    register_overload
 from datetime import\
     datetime,\
     time,\
     date as _date
-from .base.adapter_registry import\
-    adapter_registry
-from .base.extension import\
-    Extension
 from typing_extensions import\
     Annotated
 from enum import\
@@ -52,16 +49,19 @@ from .definition.permission import\
     permission,\
     grant
 from .definition.schema import\
-    schema
+    schema,\
+    register_function_path_alias
 from ._schema import\
-    pg_catalog
-from ._extension import\
-    base_extension
+    pg_catalog,\
+    register_types
 from .definition.builtin import\
     builtin
+from ._adapter_registry import\
+    adapter_registry,\
+    AdapterRegistry
 
 
-__all__ = ['pg_catalog', 'builtin', 'permission', 'grant', 'base_extension', 'schema', 'composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'discard_result_function', 'NodeException', 'FlowException', 'adapter_registry', 'Extension', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value']
+__all__ = ['pg_catalog', 'builtin', 'register_types', 'register_function_path_alias', 'permission', 'grant', 'register_overload', 'schema', 'composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'discard_result_function', 'NodeException', 'FlowException', 'adapter_registry', 'AdapterRegistry', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value']
 
 
 meta.check.type_compatibility.register(pg_catalog.int8, Number)

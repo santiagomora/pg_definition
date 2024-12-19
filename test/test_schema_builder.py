@@ -3,6 +3,11 @@ import pgdriver as pg
 import psycopg
 from typing import\
     Generator
+import sys
+import os
+sys.path.append('./')
+import test_app
+
 
 dsn_test_db: str = 'host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En'
 
@@ -11,8 +16,9 @@ def double_inclusion(builder: bd.Builder, sentences: list[str]) -> None:
     builder_sentences: list[str] = []
     with psycopg.connect(dsn_test_db) as conn:
         for bs in builder:
-            sentence, identifiers, params = bs.sql_sentence_params()
-            builder_sentences.append(psycopg.sql.SQL(sentence).format(*identifiers).as_string(conn))
+            for sentence, identifiers, params in bs.sql_sentence_params():
+                print(sentence)
+                builder_sentences.append(psycopg.sql.SQL(sentence).format(*identifiers).as_string(conn))
     print(builder_sentences)
     assert(len(builder_sentences) == len(sentences))
     assert all([bs in sentences for bs in builder_sentences])
@@ -342,3 +348,30 @@ def test_table_definition_correctly_built() -> None:
         'ALTER INDEX "old_t6_field_1_field_2_ix" RENAME TO "t6_field_1_field_2_ix"',
         'CREATE INDEX "t6_field_1_field_2_ix2" ON "_test"."_test_table6" USING BTREE ("field_1")'])
 
+
+def test_function_loader() -> None:
+
+    def mod_generator_1() -> Generator[bd.SQLSentenceParams, None, None]:
+        yield from bd.builder(test_app.test).load_functions(
+            ('create_post', 'create_comment', 'get_post_by_id', ),
+            from_function_path_alias='test_functions')\
+            .function('create_post').create_or_replace()\
+            .function('create_comment').create_or_replace()\
+            .function('get_post_by_id').create_or_replace()
+        yield bd.builder(test_app.test).function('get_post_by_id')\
+            .execute({'p_post_id': 1})
+
+    double_inclusion(mod_generator_1(), [
+        "CREATE OR REPLACE FUNCTION test.create_post(\n    p_author  author,\n    p_content text,\n    p_title   text\n) RETURNS post AS $$\nDECLARE\n    v_result post;\nBEGIN\n    INSERT INTO post(author_id, content, title, status)\n    VALUES (p_author.id, p_content, p_title, 'waiting_approval')\n    RETURNING * INTO v_result;\n    RETURN v_result;\nEND;\n$$ LANGUAGE plpgsql;",
+        'CREATE OR REPLACE FUNCTION create_comment(\n    p_author  author,\n    p_post    post,\n    p_content text\n) RETURNS comment AS $$\nDECLARE\n    v_result comment;\nBEGIN\n    INSERT INTO comment(author_id, post_id, content)\n    VALUES (p_author.id, p_post.id, p_content)\n    RETURNING * INTO v_result;\n    RETURN v_result;\nEND;\n$$ LANGUAGE plpgsql;',
+        'CREATE OR REPLACE FUNCTION test.get_post_by_id(\n    p_post_id int8\n) RETURNS post AS $$\nDECLARE\n    v_result post;\nBEGIN\n    SELECT * FROM post\n        INTO v_result\n        WHERE id = p_post_id\n        LIMIT 1;\n    RETURN v_result;\nEND;\n$$ LANGUAGE plpgsql;',
+        'PERFORM test.get_post_by_id(p_post_id := %(p_post_id)s)'])
+
+    def mod_generator_1() -> Generator[bd.SQLSentenceParams, None, None]:
+        yield from bd.builder(test_app.test).load_functions(
+            ('create_post', ),
+            from_function_path_alias='test_functions')\
+            .function('create_post').drop_overload({'p_post_id': pg.int2})
+
+    double_inclusion(mod_generator_1(), [
+        'DROP FUNCTION "test"."create_post" ("p_post_id" "pg_catalog"."int2")'])

@@ -5,8 +5,6 @@ from typing import\
     Any,\
     get_args,\
     Optional
-from pydantic.fields import\
-    FieldInfo
 from .builtin import\
     builtin_instance,\
     builtin
@@ -21,11 +19,7 @@ from psycopg import \
 from collections.abc import\
     AsyncIterator
 from pydantic import\
-    BaseModel,\
     create_model
-from .common.node import\
-    CommonValidateRestrictedMetadataTypesNode,\
-    CommonValidateFieldsBaseTypeNode
 from .common.flow import\
     FlowAccumulator,\
     NodeException,\
@@ -34,8 +28,8 @@ from .common.flow import\
     DefinitionFlowBuilder,\
     execute_definition_flow
 from .common.inspection import\
-    get_members
-import functools
+    is_pg_type
+import os
 
 
 __all__ = ['single_result_function', 'discard_result_function', 'single_result_function']
@@ -47,6 +41,29 @@ K = TypeVar("K", composite, table, enums, builtin_instance)
 
 _function_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('function-definition-flow')
 function_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_function_definition_flow_root)
+
+
+class register_overload:
+    def __init__(self, members: dict[str, type[V]]):
+        errors: list[str] = []
+        for memb in members:
+            errors += is_pg_type(
+                memb, members[memb], [enums, builtin, composite, table],
+                [builtin]
+            )
+        if len(errors) > 0:
+            raise TypeError('\n'.join(errors))
+        self.members = members
+
+    def __call__(self, target: type) -> type:
+        assert issubclass(target, function)
+        definition = getattr(target, '__pg_definition')()
+        definition['overloads'].append(
+            create_model(
+                f'{target.__name__}_ArgumentModel',
+                **{memb: (self.members[memb], ...) for memb in self.members}
+            ))
+        return target
 
 
 class function_builtin(type):
@@ -62,50 +79,8 @@ class function_builtin(type):
             execute_definition_flow(rettype, _function_definition_flow_root)
         return rettype
 
-    @functools.cache
-    def _arguments_model(self) -> BaseModel:
-        members = get_members(self)
-        return create_model(
-            f'{self.__name__}_ArgumentModel',
-            **{memb: (members[memb], ...) for memb in members}
-        )
 
-    @property
-    def model_fields(self) -> dict[str, FieldInfo]:
-        return self._arguments_model().model_fields
-
-
-class _FunctionValidateArgumentsBaseTypeNode(CommonValidateFieldsBaseTypeNode):
-    def __init__(self):
-        super().__init__('function-validate-arguments-base-type-node',
-                         type_subclass=[enums, builtin, composite, table],
-                         type_instance=[builtin])
-
-
-class _FunctionValidateRestrictedMetadataTypesNode(CommonValidateRestrictedMetadataTypesNode):
-    def __init__(self):
-        super().__init__('function-validate-restricted-metadata-types-node',
-                         types=[])
-
-
-class _FunctionDependsOnValidationNodes:
-    def get_dependencies(self) -> tuple[str]:
-        return ('function-validate-arguments-base-type-node',
-                'function-validate-restricted-metadata-types-node', )
-
-
-class _FunctionExtractArgumentsNode(SingleChoiceDefinitionFlowNode, _FunctionDependsOnValidationNodes):
-    def __init__(self):
-        super().__init__('function-extract-arguments-node')
-
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        arguments: dict[str, V] = {}
-        for field, info in target.model_fields.items():
-            arguments[field] = info.annotation
-        accumulator.add_definition('arguments', arguments)
-
-
-class _FunctionExtractReturnTypeNode(SingleChoiceDefinitionFlowNode, _FunctionDependsOnValidationNodes):
+class _FunctionExtractReturnTypeNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
         super().__init__('function-extract-return-type-node')
 
@@ -130,37 +105,46 @@ class _FunctionStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['comment'] = None
         definition['kind'] = 'function'
-        definition['arguments'] = accumulator.get_definition('arguments', 'extraction')
+        definition['overloads'] = []
         definition['return_type'] = accumulator.get_definition('return_type', 'extraction')
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('function-extract-arguments-node',
-                'function-extract-return-type-node', )
+        return ('function-extract-return-type-node', )
 
 
 function_flow_builder\
-    .at_work_path('validation')\
-        .add_node(_FunctionValidateArgumentsBaseTypeNode)\
-        .add_node(_FunctionValidateRestrictedMetadataTypesNode)\
     .at_work_path('extraction')\
-        .add_node(_FunctionExtractArgumentsNode).critical()\
-        .add_node(_FunctionExtractReturnTypeNode)\
+    .add_node(_FunctionExtractReturnTypeNode)\
     .at_work_path('')\
-        .add_node(_FunctionStoreFinalDefinitionNode).critical()
+    .add_node(_FunctionStoreFinalDefinitionNode).critical()
 
 
 class function(metaclass=function_builtin):
     @classmethod
-    async def _execute(cls, prefix: str, cursor: AsyncCursor, params: dict[str, V]) -> AsyncCursor:
+    def as_sql_query(cls, prefix: str, params: dict[str, Any]) -> str:
         query_params: list[str] = [f'{param} := %({param})s' for param in params]
-        await cursor.execute(f'{prefix} {cls.__name__}({", ".join(query_params)});', params)
+        schema: str = getattr(cls, '__pg_definition')()['schema'].__name__
+        return f'{prefix} {schema}.{cls.__name__}({", ".join(query_params)})'
+
+    @classmethod
+    async def _execute(cls, prefix: str, cursor: AsyncCursor, params: dict[str, V]) -> AsyncCursor:
+        await cursor.execute(cls.as_sql_query(prefix, params), params)
         return cursor
 
     @classmethod
     def _validate_arguments(cls, kwargs: dict[str, Any], instance: 'function') -> dict[str, V]:
-        validated: function = cls._arguments_model()\
-            .__pydantic_validator__.validate_python(kwargs, self_instance=instance)
+        definition: dict[str, Any] = getattr(cls, '__pg_definition')()
+        validated: Optional[function] = None
+        for overload in definition['overloads']:
+            try:
+                validated = overload.__pydantic_validator__.\
+                    validate_python(kwargs, self_instance=instance)
+                break
+            except Exception:
+                validated = None
+        if validated is None and len(definition['overloads']) > 0:
+            raise ValueError(f'Didnt find suitable overload to execute function "{cls.__name__}"')
         return {name: getattr(validated, name) for name in kwargs}
 
 

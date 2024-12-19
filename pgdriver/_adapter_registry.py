@@ -12,11 +12,11 @@ from psycopg.abc import\
 from typing import \
     Any,\
     Union
-from ..definition.common.model import\
+from .definition.common.model import\
     base_model
 
 
-__all__ = ['adapter_registry']
+__all__ = ['adapter_registry', 'AdapterRegistry']
 
 
 def _model_as_tuple(
@@ -86,7 +86,7 @@ class _RecordLoader(psycomposite.CompositeLoader):
         return self._load_recursive(data, self.field_types)
 
 
-class _AdapterRegistry:
+class AdapterRegistry:
     def __init__(self) -> None:
         self._type_oid: dict[type, int] = {}
         self._oid_fields: dict[int, list[str]] = {}
@@ -109,7 +109,10 @@ class _AdapterRegistry:
         self._conn = None
         self._dsn = None
 
-    def register_composite(self, cls: type, schema: str, name: str) -> None:
+    def register_composite(self, cls: type, name: Optional[str] = None) -> None:
+        if name is None:
+            name = cls.__name__
+        schema: str = getattr(cls, '__pg_definition')()['schema'].__name__
         info = psycomposite.CompositeInfo.fetch(self._conn, f'{schema}.{name}')
         self._oid_fields[info.oid] = info.field_names
         self._oid_field_types[info.oid] = info.field_types
@@ -130,12 +133,18 @@ class _AdapterRegistry:
         psycopg.adapters.register_loader(dumper.oid, loader)
         self._type_oid[cls] = info.oid
 
-    def register_enum(self, cls: type, schema: str, name: str) -> None:
+    def register_enum(self, cls: type, name: Optional[str] = None) -> None:
+        if name is None:
+            name = cls.__name__
+        schema: str = getattr(cls, '__pg_definition')()['schema'].__name__
         info = psyenum.EnumInfo.fetch(self._conn, f'{schema}.{name}')
         self._type_oid[cls] = info.oid
         psyenum.register_enum(info, None, cls)
 
-    def register_type(self, cls: type, schema: str, name: str) -> None:
+    def register_type(self, cls: type, name: Optional[str] = None) -> None:
+        if name is None:
+            name = cls.__name__
+        schema: str = getattr(cls, '__pg_definition')()['schema'].__name__
         info = TypeInfo.fetch(self._conn, f'{schema}.{name}')
         self._type_oid[cls] = info.oid
         loader: type = type(f'{schema}_{name}_Loader', (_BuiltinLoader, ),
@@ -147,4 +156,4 @@ class _AdapterRegistry:
         self._type_oid[cls] = info.oid
 
 
-adapter_registry = _AdapterRegistry()
+adapter_registry: AdapterRegistry = AdapterRegistry()

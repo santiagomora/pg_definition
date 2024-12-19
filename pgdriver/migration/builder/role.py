@@ -1,7 +1,8 @@
 from typing import\
     Any,\
     Optional,\
-    Union
+    Union,\
+    Generator
 from typing_extensions import\
     Self
 from psycopg import\
@@ -11,7 +12,7 @@ from .common import\
     Builder,\
     WrapsComponent,\
     SQLSentenceParams,\
-    GeneratesSQLSentence as _GeneratesSQLSentence
+    GeneratesSQLSentence
 
 
 __all__ = ['builder']
@@ -22,7 +23,7 @@ __all__ = ['builder']
 # TODO: when creating a table or a sequence it must be possible to revoke all permissions from it from all roles
 # TODO: when creating a table or a sequence it must be possible to revoke all permissions from it
 # TODO: add create role builder for permissions as groups of grants over defined objects, and roles as groups of permissions
-class GeneratesSQLSentence(_GeneratesSQLSentence):
+class HandlesPlaceholders:
     def get_placeholders(self) -> tuple[str, list[sql.Identifier], str]:
         placeholder: str = ''
         identifiers: list[sql.Identifier] = []
@@ -35,7 +36,7 @@ class GeneratesSQLSentence(_GeneratesSQLSentence):
         return placeholder, identifiers, self.component.definition['kind'].upper()
 
 
-class Grant(WrapsComponent, GeneratesSQLSentence):
+class Grant(WrapsComponent, GeneratesSQLSentence, HandlesPlaceholders):
     def __init__(
         self, over: Component, action: Component
     ) -> None:
@@ -44,7 +45,7 @@ class Grant(WrapsComponent, GeneratesSQLSentence):
         self.action = action
 
 
-class Revoke(WrapsComponent, GeneratesSQLSentence):
+class Revoke(WrapsComponent, GeneratesSQLSentence, HandlesPlaceholders):
     def __init__(
         self, over: Component, action: Component
     ) -> None:
@@ -83,108 +84,108 @@ class Revokable(ChecksDefinitionPresence):
 
 class Select(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'GRANT SELECT ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT SELECT ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE SELECT ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE SELECT ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Insert(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'GRANT INSERT ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT INSERT ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE INSERT ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE INSERT ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Update(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'GRANT UPDATE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT UPDATE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE UPDATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE UPDATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Delete(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'GRANT DELETE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT DELETE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE DELETE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE DELETE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Truncate(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers = self.get_placeholders()
-            return (f'GRANT TRUNCATE ON {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT TRUNCATE ON {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE TRUNCATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE TRUNCATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Usage(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'GRANT USAGE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT USAGE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE USAGE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE USAGE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Execute(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'GRANT EXECUTE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT EXECUTE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE EXECUTE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE EXECUTE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Create(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE CREATE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE CREATE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
-            return (f'REVOKE CREATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE CREATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class Role(Component, Grantable, Revokable):
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('GRANT {} TO {}', [sql.Identifier(self.action.name), sql.Identifier(self.permission.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('GRANT {} TO {}', [sql.Identifier(self.action.name), sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('REVOKE {} FROM {}', [sql.Identifier(self.action.name), sql.Identifier(self.permission.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('REVOKE {} FROM {}', [sql.Identifier(self.action.name), sql.Identifier(self.permission.name)], [], )
 
 
 class References(Component, Grantable, Revokable):
@@ -196,16 +197,16 @@ class References(Component, Grantable, Revokable):
         self.columns = columns
 
     class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
             columns_ph: list[str] = ['{}']*len(self.action.columns)
-            return (f'GRANT REFERENCES ({", ".join(columns_ph)}) ON {placeholder} TO ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers +  [sql.Identifier(self.permission.name)], [], )
+            yield (f'GRANT REFERENCES ({", ".join(columns_ph)}) ON {placeholder} TO ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers +  [sql.Identifier(self.permission.name)], [], )
 
     class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             placeholder, identifiers, kind = self.get_placeholders()
             columns_ph: list[str] = ['{}']*len(self.action.columns)
-            return (f'REVOKE REFERENCES ({", ".join(columns_ph)}) ON {placeholder} FROM ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers + [sql.Identifier(self.permission.name)], [], )
+            yield (f'REVOKE REFERENCES ({", ".join(columns_ph)}) ON {placeholder} FROM ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class PermissionActionBuilder(Builder):
@@ -353,12 +354,12 @@ class SchemaBuilder(Builder):
 
 class Permission(Component):
     class Create(WrapsComponent):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('CREATE ROLE {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('CREATE ROLE {}', [sql.Identifier(self.component.name)], [], )
 
     class Drop(WrapsComponent):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP ROLE {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP ROLE {}', [sql.Identifier(self.component.name)], [], )
 
     def get_grant(self, tp: type, name: str) -> Any:
         has_perm: Any = self.definition.get('type_grants', {}).get(tp, {}).get('grants', {}).get(name, None)

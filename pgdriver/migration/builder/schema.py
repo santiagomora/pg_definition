@@ -2,7 +2,8 @@ from typing import\
     Any,\
     Optional,\
     Union,\
-    Callable
+    Callable,\
+    Generator
 from typing_extensions import\
     Self
 import pgdriver as pg
@@ -14,6 +15,8 @@ from .common import\
     WrapsComponent,\
     SQLSentenceParams,\
     GeneratesSQLSentence
+from .common import\
+    load_functions_from_file
 
 
 __all__ = ['builder']
@@ -54,6 +57,10 @@ class Create(WrapsComponent, GeneratesSQLSentence):
     pass
 
 
+class Execute(WrapsComponent, GeneratesSQLSentence):
+    pass
+
+
 class ChecksDefinitionPresence:
     def check_definition_is_present(self):
         if self.definition is None:
@@ -86,6 +93,11 @@ class Creatable:
         return self.__class__.Create(self)
 
 
+class Executable:
+    def execute(self) -> Execute:
+        return self.__class__.Execute(self)
+
+
 class Renamable(ChecksDefinitionPresence):
     def rename_from(self, old_name: str) -> Rename:
         self.check_definition_is_present()
@@ -102,7 +114,7 @@ class Settable(ChecksDefinitionPresence):
 class Type(Component, Settable):
     class Set(Set):
         def sql_sentence_params(self) -> GeneratesSQLSentence:
-            return ('TYPE {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
+            yield ('TYPE {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
 
 
 class TypeBuilder(Builder):
@@ -125,46 +137,46 @@ class Comment(Component, Droppable, Addable):
 
 class Constraint(Component, Droppable, Addable, Renamable):
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('ADD CONSTRAINT {} ', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('ADD CONSTRAINT {} ', [sql.Identifier(self.component.name)], [], )
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP CONSTRAINT {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP CONSTRAINT {}', [sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME CONSTRAINT {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME CONSTRAINT {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
 
 
 class PrimaryKey(Constraint):
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
-            return ('ADD CONSTRAINT {} PRIMARY KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
+            yield ('ADD CONSTRAINT {} PRIMARY KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
 
 
 class ForeignKey(Constraint):
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
-            return ('ADD CONSTRAINT {} FOREIGN KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
+            yield ('ADD CONSTRAINT {} FOREIGN KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
 
 
 class UniqueConstraint(Constraint):
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
-            return ('ADD CONSTRAINT {} UNIQUE ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
+            yield ('ADD CONSTRAINT {} UNIQUE ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
 
 
 class CheckConstraint(Constraint):
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('ADD CONSTRAINT {} CHECK {}', [sql.Identifier(self.component.name), sql.SQL(str(self.component.definition))], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('ADD CONSTRAINT {} CHECK {}', [sql.Identifier(self.component.name), sql.SQL(str(self.component.definition))], [], )
 
 
 class ConstraintBuilder(Builder):
@@ -197,18 +209,18 @@ class Expression(Component, Droppable, Addable):
 
 class Default(Component, Droppable, Settable):
     class Set(Set):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             if isinstance(self.component.definition, pg.meta.default_value):
-                return ('SET DEFAULT {}', [sql.SQL(str(self.component.definition))], [], )
+                yield ('SET DEFAULT {}', [sql.SQL(str(self.component.definition))], [], )
             elif isinstance(self.component.definition, pg.meta.default_nextval):
                 seq_def: dict[str, Any] = getattr(self.component.definition.seq, '__pg_definition')()
-                return ('SET DEFAULT nextval(%s)', [], [f'{seq_def["schema"]}.{self.component.definition.seq.__name__}'], )
+                yield ('SET DEFAULT nextval(%s)', [], [f'{seq_def["schema"]}.{self.component.definition.seq.__name__}'], )
             else:
                 raise ValueError(f'Unkown default value type: "{self.component.definition}"')
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP DEFAULT', [], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP DEFAULT', [], [], )
 
 
 class DefaultBuilder(Builder):
@@ -237,22 +249,22 @@ class Column(Component, Alterable, Droppable, Addable, Renamable):
             self.new_type: type = new_type
 
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
-            return ('ADD COLUMN {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
+            yield ('ADD COLUMN {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER COLUMN {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params)
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in self.change.sql_sentence_params():
+                yield ('ALTER COLUMN {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP COLUMN {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP COLUMN {}', [sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME COLUMN {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME COLUMN {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
 
 
 class TableColumnBuilder(Builder):
@@ -287,26 +299,26 @@ class TableColumnBuilder(Builder):
 
 class Index(Component, Droppable, Renamable, Creatable, Alterable):
     class Create(Create):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             columns: list[str] = [sql.Identifier(c) for c in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
             unique: bool = self.component.definition['unique']
             tp: pg.index_type = str(self.component.definition['type'].value).upper()
             schema = self.component.parent.definition['schema'].__name__
-            return (f'CREATE{" UNIQUE" if unique else ""} ' + 'INDEX {} ON {}.{} USING ' + tp + f' ({", ".join(placeholders)})', [sql.Identifier(self.component.name), sql.Identifier(schema), sql.Identifier(self.component.parent.name)] + columns, [])
+            yield (f'CREATE{" UNIQUE" if unique else ""} ' + 'INDEX {} ON {}.{} USING ' + tp + f' ({", ".join(placeholders)})', [sql.Identifier(self.component.name), sql.Identifier(schema), sql.Identifier(self.component.parent.name)] + columns, [])
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER INDEX {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params)
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in self.change.sql_sentence_params():
+                yield ('ALTER INDEX {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP INDEX {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP INDEX {}', [sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
 
 class IndexBuilder(list[Any], Builder):
@@ -332,7 +344,7 @@ class IndexBuilder(list[Any], Builder):
 
 class Table(Component, Droppable, Creatable, Alterable, Renamable):
     class Create(Create):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             bases: list[sql.Identifier] = []
             placeholders: list[str] = []
             base_classes: Optional[list[type]] = self.component.definition['base_classes']
@@ -340,20 +352,20 @@ class Table(Component, Droppable, Creatable, Alterable, Renamable):
                 definition: dict[str, Any] = getattr(base, '__pg_definition')()
                 bases += [sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
                 placeholders += ['{}.{}']
-            return ('CREATE TABLE {}.{} () INHERITS ' + f'({", ".join(placeholders)})' if len(bases) > 0 else 'CREATE TABLE {}.{} ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + bases, [])
+            yield ('CREATE TABLE {}.{} () INHERITS ' + f'({", ".join(placeholders)})' if len(bases) > 0 else 'CREATE TABLE {}.{} ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + bases, [])
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER TABLE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params)
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in  self.change.sql_sentence_params():
+                yield ('ALTER TABLE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP TABLE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP TABLE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
 
 class TableBuilder(list[Any], Builder):
@@ -398,22 +410,22 @@ class TableBuilder(list[Any], Builder):
 
 class Attribute(Component, Renamable, Addable, Droppable, Alterable):
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER ATTRIBUTE {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params, )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in  self.change.sql_sentence_params():
+                yield ('ALTER ATTRIBUTE {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
     class Add(Add):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
-            return ('ADD ATTRIBUTE {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
+            yield ('ADD ATTRIBUTE {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP ATTRIBUTE {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP ATTRIBUTE {}', [sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME ATTRIBUTE {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME ATTRIBUTE {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
 
 
 class CompositeAttributeBuilder(Builder):
@@ -442,21 +454,21 @@ class CompositeAttributeBuilder(Builder):
 
 class Composite(Component, Renamable, Alterable, Droppable, Creatable):
     class Create(Create):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('CREATE TYPE {}.{} AS ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('CREATE TYPE {}.{} AS ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER TYPE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params)
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in self.change.sql_sentence_params():
+                yield ('ALTER TYPE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP TYPE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP TYPE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
 
 class CompositeBuilder(list[Any], Builder):
@@ -484,12 +496,12 @@ class CompositeBuilder(list[Any], Builder):
 
 class Value(Component, Addable, Renamable):
     class Add(Add):
-        def sql_sentence_params(self) -> str:
-            return ('ADD VALUE %s', [], [self.component.name], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('ADD VALUE %s', [], [self.component.name], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME VALUE %s TO %s', [], [self.old_name, self.component.name], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME VALUE %s TO %s', [], [self.old_name, self.component.name], )
 
 
 class EnumValueBuilder(Builder):
@@ -508,21 +520,21 @@ class EnumValueBuilder(Builder):
 
 class Enum(Component, Renamable, Alterable, Droppable, Creatable):
     class Create(Create):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('CREATE TYPE {}.{} AS ENUM ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('CREATE TYPE {}.{} AS ENUM ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER TYPE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in self.change.sql_sentence_params():
+                yield ('ALTER TYPE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP TYPE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP TYPE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
 
 class EnumBuilder(list[Any], Builder):
@@ -552,22 +564,22 @@ class EnumBuilder(list[Any], Builder):
 
 class Domain(Component, Creatable, Alterable, Renamable, Droppable):
     class Create(Create):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             tdef: dict[str, Any] = getattr(self.component.definition["base_type"], '__pg_definition')()
-            return ('CREATE DOMAIN {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
+            yield ('CREATE DOMAIN {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER DOMAIN {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in self.change.sql_sentence_params():
+                yield ('ALTER DOMAIN {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP DOMAIN {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP DOMAIN {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
 
 class DomainBuilder(list[Any], Builder):
@@ -593,47 +605,47 @@ class DomainBuilder(list[Any], Builder):
 
 class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
     class Create(Create):
-        def sql_sentence_params(self) -> SQLSentenceParams:
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
             base_tdef = getattr(self.component.definition["base_type"], '__pg_definition')()
-            return ('CREATE SEQUENCE {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(base_tdef['schema'].__name__), sql.Identifier(base_tdef['type'].__name__)], [], )
+            yield ('CREATE SEQUENCE {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(base_tdef['schema'].__name__), sql.Identifier(base_tdef['type'].__name__)], [], )
 
     class Alter(Alter):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
-            return ('ALTER SEQUENCE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for change_sentence, change_identifiers, change_params in self.change.sql_sentence_params():
+                yield ('ALTER SEQUENCE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
     class Type(Type):
         class Set(Set):
-            def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('AS {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
+            def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+                yield ('AS {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
 
     class MinValue(Component, Settable):
         class Set(Set):
-            def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('MINVALUE %s', [], [self.component.definition])
+            def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+                yield ('MINVALUE %s', [], [self.component.definition])
 
     class MaxValue(Component, Settable):
         class Set(Set):
-            def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('MAXVALUE %s', [], [self.component.definition])
+            def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+                yield ('MAXVALUE %s', [], [self.component.definition])
 
     class Increment(Component, Settable):
         class Set(Set):
-            def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('INCREMENT BY %s', [], [self.component.definition])
+            def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+                yield ('INCREMENT BY %s', [], [self.component.definition])
 
     class Cycle(Component, Settable):
         class Set(Set):
-            def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('CYCLE', [], [], )
+            def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+                yield ('CYCLE', [], [], )
 
     class Rename(Rename):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
     class Drop(Drop):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP SEQUENCE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield ('DROP SEQUENCE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
 
 class SequenceAttributeBuilder(Builder):
@@ -692,8 +704,86 @@ class SequenceBuilder(list[Any], Builder):
         return self
 
 
+class Function(Component, Executable):
+    class Execute(Execute):
+        def __init__(self, component: Component, params: dict[str, Any]):
+            Execute.__init__(self, component)
+            self.params = params
+
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            yield (self.component.definition['type'].as_sql_query('PERFORM', self.params), [], self.params, )
+
+    def execute(self, params: dict[str, Any]) -> Execute:
+        return self.__class__.Execute(self, params)
+
+
+class FunctionBuilder(Builder):
+    def __init__(
+        self, function: Function
+    ) -> None:
+        self.function = function
+
+    def execute(self, params: dict[str, Any]) -> Execute:
+        return self.function.execute(params)
+
+
+class LoadedFunction(Component, Creatable, Droppable):
+    class Create(Create):
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            for definition in self.component.definition:
+                yield (definition, [], [])
+
+    class Drop(Drop):
+        def __init__(self, component: Component, overload: dict[str, Any]):
+            Execute.__init__(self, component)
+            self.overload = overload
+
+        def sql_sentence_params(self) -> Generator[SQLSentenceParams, None, None]:
+            overload: list[sql.Identifier] = []
+            placeholders: list[str] = []
+            for param_name, param_type in self.overload.items():
+                definition: dict[str, Any] = getattr(param_type, '__pg_definition')()
+                overload += [sql.Identifier(param_name), sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
+                placeholders.append('{} {}.{}')
+            yield ('DROP FUNCTION {}.{} ' + f'({", ".join(placeholders )})', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + overload, [], )
+
+    def drop(self, overload: dict[str, type]) -> Drop:
+        # TODO validate overload is not present in schema
+        # TODO validate overload is not present in file
+        return self.__class__.Drop(self, overload)
+
+
+class LoadFunctionBuilderInner(Builder):
+    def __init__(
+        self, parent_builder: 'LoadFunctionBuilder', function: LoadedFunction
+    ) -> None:
+        self.function = function
+        self.parent_builder = parent_builder
+
+    def create_or_replace(self) -> 'LoadFunctionBuilder':
+        self.parent_builder.append(self.function.create())
+        return self.parent_builder
+
+    def drop_overload(self, overload: Optional[dict[str, type]]) -> 'LoadFunctionBuilder':
+        self.parent_builder.append(self.function.drop(overload))
+        return self.parent_builder
+
+
+class LoadFunctionBuilder(list[Any], Builder):
+    def __init__(
+        self, loaded_functions: LoadedFunction
+    ) -> None:
+        list.__init__(self)
+        self.loaded_functions = loaded_functions
+
+    def function(self, name: str) -> LoadFunctionBuilderInner:
+        function: LoadedFunction = LoadedFunction(name, self.loaded_functions.parent, self.loaded_functions.definition.get(name, None))
+        return LoadFunctionBuilderInner(self, function)
+
+
 class Schema(Component):
-    pass
+    def search_object(self, name: str) -> Optional[type]:
+        return self.definition['objects'].get(name, None)
 
 
 class SchemaBuilder(list[Any], Builder):
@@ -703,34 +793,37 @@ class SchemaBuilder(list[Any], Builder):
         list.__init__(self)
         self.schema = schema
 
-    def _search_object(self, name: str) -> Optional[type]:
-        return self.schema.definition['objects'].get(name, None)
-
     def _get_builder(
         self, name: str, builder_cls: type, cls: type
     ) -> Builder:
-        tp: Optional[type] = self._search_object(name)
+        tp: Optional[type] = self.schema.search_object(name)
         if tp is None:
             return builder_cls(cls(name, self.schema, None))
         else:
             return builder_cls(cls(name, self.schema, getattr(tp, '__pg_definition')()))
 
-    def table(self, name: str) -> Self:
+    def table(self, name: str) -> TableBuilder:
         return self._get_builder(name, TableBuilder, Table)
 
-    def sequence(self, name: str) -> Self:
+    def sequence(self, name: str) -> SequenceBuilder:
         return self._get_builder(name, SequenceBuilder, Sequence)
 
-    def enum(self, name: str) -> Self:
+    def enum(self, name: str) -> EnumBuilder:
         return self._get_builder(name, EnumBuilder, Enum)
 
-    def composite(self, name: str) -> Self:
+    def composite(self, name: str) -> CompositeBuilder:
         return self._get_builder(name, CompositeBuilder, Composite)
 
-    def domain(self, name: str) -> Self:
+    def domain(self, name: str) -> DomainBuilder:
         return self._get_builder(name, DomainBuilder, Domain)
 
+    def function(self, name: str) -> FunctionBuilder:
+        return self._get_builder(name, FunctionBuilder, Function)
 
-def builder(schema: type) -> Builder:
+    def load_functions(self, names: Optional[tuple[str, ...]], *, from_function_path_alias: str) -> LoadFunctionBuilder:
+        return LoadFunctionBuilder(LoadedFunction(None, self.schema, load_functions_from_file(self.schema.definition['function_path_alias'][from_function_path_alias], self.schema.name, names)))
+
+
+def builder(schema: type) -> SchemaBuilder:
     schema: Schema = Schema(schema.__name__, None, getattr(schema, '__pg_definition')())
     return SchemaBuilder(schema)

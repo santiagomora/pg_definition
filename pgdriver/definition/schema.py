@@ -7,6 +7,7 @@ from .common.flow import\
     DefinitionFlowBuilder,\
     execute_definition_flow,\
     NodeException
+import os
 
 
 __all__ = ['schema']
@@ -70,6 +71,7 @@ class _SchemaStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['comment'] = None
         definition['kind'] = 'schema'
+        definition['function_path_alias'] = {}
         definition['objects'] = accumulator.get_definition('objects', 'extraction')
         accumulator.add_definition('final', definition)
 
@@ -79,3 +81,16 @@ schema_definition_flow_builder\
     .add_node(_SchemaSetSchemaOnMembersNode)\
     .at_work_path('')\
     .add_node(_SchemaStoreFinalDefinitionNode)
+
+
+class register_function_path_alias:
+    def __init__(self, *, alias: str, current_file_path: str, function_path: str) -> None:
+        self.name = alias
+        self.path = f'{os.path.dirname(os.path.abspath(current_file_path))}/{function_path}'
+
+    def __call__(self, target: type):
+        assert issubclass(target, schema)
+        definition: dict[str, Any] = getattr(target, '__pg_definition')()
+        assert self.name not in definition['function_path_alias']
+        definition['function_path_alias'][self.name] = self.path
+        return target

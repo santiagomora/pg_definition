@@ -96,16 +96,3 @@ BEGIN
     RETURN (p_comment, p_post, p_description, p_author)::comment_post;
 END;
 $$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION as_comment_post(
-    p_post post,
-    p_comment comment,
-    p_description text,
-    p_author author
-) RETURNS comment_post AS $$
-BEGIN
-    RETURN (p_comment, p_post, p_description, p_author)::comment_post;
-END;
-$$ LANGUAGE plpgsql;
-

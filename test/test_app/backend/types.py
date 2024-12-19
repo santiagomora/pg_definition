@@ -5,20 +5,6 @@ class author_id_sequence(pg.int8_sequence):
     pass
 
 
-class post_id_sequence(pg.int8_sequence):
-    pass
-
-
-class comment_id_sequence(pg.int8_sequence):
-    pass
-
-
-class post_status_enum(pg.enums):
-    published = pg.auto()
-    waiting_approval = pg.auto()
-    draft = pg.auto()
-
-
 @pg.primary_key(name='author_pk', columns=('id', ))
 class author(pg.table):
     id: pg.Annotated[pg.int8, pg.meta.default_nextval(seq=author_id_sequence)]
@@ -37,11 +23,25 @@ class authored(pg.table):
     content: pg.text
 
 
+class post_status_enum(pg.enums):
+    published = pg.auto()
+    waiting_approval = pg.auto()
+    draft = pg.auto()
+
+
+class post_id_sequence(pg.int8_sequence):
+    pass
+
+
 @pg.primary_key(name='post_pk', columns=('id', ))
 class post(authored, with_timestamps):
     id: pg.Annotated[pg.int8, pg.meta.default_nextval(seq=post_id_sequence)]
     title: pg.text
     status: post_status_enum
+
+
+class comment_id_sequence(pg.int8_sequence):
+    pass
 
 
 @pg.primary_key(name='comment_pk', columns=('id', ))

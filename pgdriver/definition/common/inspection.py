@@ -290,3 +290,25 @@ def flatten(items):
                 yield sub_x
         else:
             yield x
+
+
+def is_pg_type(name: str, tp: type, type_subclass: list[type], instances: list[type]) -> list[str]:
+    errors: list[str] = []
+    is_subclass_of_required: bool = False
+    for required in type_subclass:
+        if issubclass(tp, required):
+            is_subclass_of_required = True
+    is_instance_of_required: bool = False
+    if not is_subclass_of_required:
+        for required in instances:
+            if isinstance(tp, required):
+                is_instance_of_required = True
+    if is_subclass_of_required or is_instance_of_required:
+        return errors
+    elif not is_instance_of_required:
+        super_instances_str: str = ', '.join([str(e) for e in instances])
+        errors.append(f'Field {name} type must be a subclass of {super_instances_str}')
+    else:
+        super_classes_str: str = ', '.join([str(e) for e in type_subclass])
+        errors.append(f'Field {name} type must be an instance of {super_classes_str}')
+    return errors
