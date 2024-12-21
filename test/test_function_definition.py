@@ -1,5 +1,5 @@
 import psycopg
-import pgdriver as pg
+import pg_definition as pg
 from typing_extensions import\
     Annotated
 from typing import\

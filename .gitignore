@@ -6,8 +6,10 @@ lib
 lib64
 include
 .cache
-pgdriver.egg-info
+pg_definition.egg-info
 dist
 commit.msg
+.commit.msg.swp
 pyvenv.cfg
 *.kate-swp
+venv

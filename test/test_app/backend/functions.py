@@ -1,4 +1,4 @@
-import pgdriver as pg
+import pg_definition as pg
 import test_app.backend.types as types
 
 

@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='pgdriver',
+    name='pg_definition',
     zip_safe=False,
     packages=find_packages()
 )

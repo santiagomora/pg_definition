@@ -1,4 +1,4 @@
-import pgdriver as pg
+import pg_definition as pg
 from typing_extensions import\
     Annotated
 from typing import\
@@ -57,7 +57,7 @@ def test_composite_flow_validates_single_inheritance() -> None:
         class test3(test1, test2):
             pass
     except TypeError as e:
-        assert str(e) == "Class <class 'pgdriver.definition.common.model._PGBaseModelMeta'> doesnt allow multiple bases"
+        assert str(e) == "Class <class 'pg_definition.types.common.model._PGBaseModelMeta'> doesnt allow multiple bases"
 
 
 def test_composite_flow_detects_invalid_check_in_definition() -> None:
@@ -296,7 +296,7 @@ def test_composite_flow_detects_invalid_metadata() -> None:
         error: Optional[pg.NodeException] = e.get_error('composite-definition-flow',
                                                          'composite-validate-restricted-metadata-types-node')
         assert error is not None
-        assert str(error) == "Invalid metadata type <class 'pgdriver.definition.meta.meta.check'> in field_1 declaration"
+        assert str(error) == "Invalid metadata type <class 'pg_definition.types.meta.meta.check'> in field_1 declaration"
 
 
 def test_composite_support_complex_type_creation() -> None:

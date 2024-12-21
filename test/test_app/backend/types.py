@@ -1,4 +1,4 @@
-import pgdriver as pg
+import pg_definition as pg
 
 
 class author_id_sequence(pg.int8_sequence):

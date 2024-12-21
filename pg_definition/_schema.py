@@ -1,6 +1,6 @@
-from .definition.schema import\
+from .types.schema import\
     schema
-import pgdriver.definition.builtin as build
+import pg_definition.types.builtin as build
 from ._adapter_registry import\
     AdapterRegistry
 

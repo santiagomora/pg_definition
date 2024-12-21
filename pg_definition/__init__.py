@@ -1,8 +1,8 @@
 from numbers import\
     Number
-from .definition.composite import\
+from .types.composite import\
     composite
-from .definition.table import\
+from .types.table import\
     table,\
     index_type,\
     foreign_key_action,\
@@ -10,21 +10,21 @@ from .definition.table import\
     unique_constraint,\
     primary_key,\
     foreign_key
-from .definition.common.flow import\
+from .types.common.flow import\
     NodeException,\
     FlowException
-from .definition.enums import\
+from .types.enums import\
     enums
-from .definition.meta.predicate import\
+from .types.meta.predicate import\
     LogicOperand,\
     OperandDefinitionContext,\
     this,\
     field,\
     literal,\
     length
-from .definition.meta import\
+from .types.meta import\
     meta
-from .definition.sequence import\
+from .types.sequence import\
     int8_sequence,\
     int4_sequence,\
     int2_sequence,\
@@ -32,7 +32,7 @@ from .definition.sequence import\
     increment,\
     max_value,\
     min_value
-from .definition.function import\
+from .types.function import\
     single_result_function,\
     set_returning_function,\
     discard_result_function,\
@@ -41,27 +41,29 @@ from datetime import\
     datetime,\
     time,\
     date as _date
+from typing import\
+    Optional
 from typing_extensions import\
     Annotated
 from enum import\
     auto
-from .definition.permission import\
+from .types.permission import\
     permission,\
     grant
-from .definition.schema import\
+from .types.schema import\
     schema,\
     register_function_path_alias
 from ._schema import\
     pg_catalog,\
     register_types
-from .definition.builtin import\
+from .types.builtin import\
     builtin
 from ._adapter_registry import\
     adapter_registry,\
     AdapterRegistry
 
 
-__all__ = ['pg_catalog', 'builtin', 'register_types', 'register_function_path_alias', 'permission', 'grant', 'register_overload', 'schema', 'composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'discard_result_function', 'NodeException', 'FlowException', 'adapter_registry', 'AdapterRegistry', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value']
+__all__ = ['pg_catalog', 'builtin', 'register_types', 'register_function_path_alias', 'permission', 'grant', 'register_overload', 'schema', 'composite', 'table', 'meta', 'index_type', 'foreign_key_action', 'index', 'unique_constraint', 'primary_key', 'foreign_key', 'enums', 'LogicOperand', 'OperandDefinitionContext', 'this', 'field', 'literal', 'length', 'int8_sequence', 'int4_sequence', 'int2_sequence', 'sequence', 'builtin', 'int4', 'int8', 'int2', 'float4', 'text', 'char', 'float8', 'bytea', 'timestamptz', 'timetz', 'date', 'bool', 'single_result_function', 'set_returning_function', 'discard_result_function', 'NodeException', 'FlowException', 'adapter_registry', 'AdapterRegistry', 'Annotated', 'auto', 'in_schema', 'increment', 'max_value', 'min_value', 'Optional']
 
 
 meta.check.type_compatibility.register(pg_catalog.int8, Number)

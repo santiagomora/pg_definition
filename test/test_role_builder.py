@@ -1,4 +1,4 @@
-import pgdriver.migration.builder.role as rb
+import pg_definition.builder.role as rb
 import psycopg
 from typing import\
     Generator
@@ -15,10 +15,10 @@ def double_inclusion(builder: rb.Builder, sentences: list[str]) -> None:
     builder_sentences: list[str] = []
     with psycopg.connect(dsn_test_db) as conn:
         for bs in builder:
-            for sentence, identifiers, params in bs.sql_sentence_params():
-                sentence_sql = psycopg.sql.SQL(sentence).format(*identifiers).as_string(conn)
-                print(sentence_sql, params)
-                builder_sentences.append(sentence_sql)
+            sentence, identifiers, params = bs.sql_sentence_params()
+            sentence_sql = psycopg.sql.SQL(sentence).format(*identifiers).as_string(conn)
+            print(sentence_sql, params)
+            builder_sentences.append(sentence_sql)
     print(builder_sentences)
     assert(len(builder_sentences) == len(sentences))
     assert all([bs in sentences for bs in builder_sentences])

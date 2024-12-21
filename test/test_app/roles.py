@@ -1,5 +1,5 @@
 from test_app import test
-import pgdriver as pg
+import pg_definition as pg
 
 
 @pg.grant.schema.usage(test)

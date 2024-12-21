@@ -1,4 +1,4 @@
-import pgdriver as pg
+import pg_definition as pg
 from typing_extensions import\
     Annotated
 from typing import\
@@ -6,8 +6,6 @@ from typing import\
     Any
 from dataclasses import\
     dataclass
-from pgdriver.definition.common.inspection import\
-    extract_first_instance_from_field_metadata
 
 
 def test_table_definition_is_correctly_formed() -> None:
