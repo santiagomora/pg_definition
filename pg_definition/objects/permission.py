@@ -4,21 +4,8 @@ from typing import\
     Generic
 from typing import\
     Type
-from .table import\
-    table
-from .schema import\
-    schema
-from .sequence import\
-    sequence
-from .function import\
-    function
-from .builtin import\
-    builtin
-from .composite import\
-    composite
-from .enums import\
-    enums
-from .common.flow import\
+import pg_definition.types as pt
+from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     SingleChoiceDefinitionFlowNode,\
@@ -27,8 +14,16 @@ from .common.flow import\
     FlowException,\
     NodeException,\
     execute_definition_flow
-from .common.node import\
-    CommonDetermineIfTargetIsDomainNode
+from ..common.node import\
+    CommonDetermineIfObjectIsDomainNode
+from .schema import\
+    schema
+from .sequence import\
+    sequence
+from ..types.table import\
+    table
+# from ..types.function import\
+#     function
 
 
 __all__ = ['permission', 'grant']
@@ -40,22 +35,22 @@ permission_definition_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilde
 
 # a permission is a direct descendant of a permission, and inherits only from permission
 # a role groups several permissions. Roles cant inherit from another roles
-class permission_builtin(type):
+class _permission(type):
     def __new__(
-        cls, clsname: str, clsbases: tuple[type],
-        clsdict: dict[str, Any], **kwargs
+        cls, clsname: str, clsbases: tuple[type], clsdict: dict[str, Any]
     ) -> type:
-        rettype: type = super()\
-            .__new__(cls, clsname, clsbases, clsdict)
+        rettype: type = super().__new__(
+            cls, clsname, clsbases, clsdict
+        )
         execute_definition_flow(rettype, _permission_definition_flow_root)
         return rettype
 
 
-class permission(metaclass=permission_builtin):
+class permission(metaclass=_permission):
     pass
 
 
-T = TypeVar('T', table, sequence, function)
+T = TypeVar('T', table, sequence, schema) #, function)
 
 
 class _Grant(Generic[T]):
@@ -82,32 +77,32 @@ class grant:
         class select(_Grant[table]):
             def __init__(self, tp: Type[table]):
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, table)
+                assert isinstance(tp, table)
 
         class insert(_Grant[table]):
             def __init__(self, tp: Type[table]):
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, table)
+                assert isinstance(tp, table)
 
         class update(_Grant[table]):
             def __init__(self, tp: Type[table]):
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, table)
+                assert isinstance(tp, table)
 
         class delete(_Grant[table]):
             def __init__(self, tp: Type[table]):
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, table)
+                assert isinstance(tp, table)
 
         class truncate(_Grant[table]):
             def __init__(self, tp: Type[table]):
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, table)
+                assert isinstance(tp, table)
 
         class references(_Grant[table]):
             def __init__(self, tp: Type[table], columns: tuple[str]) -> None:
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, table)
+                assert isinstance(tp, table)
                 assert len(columns) > 0
                 self.columns = columns
 
@@ -130,32 +125,32 @@ class grant:
         class usage(_Grant[sequence]):
             def __init__(self, tp: Type[sequence]):
                 _Grant.__init__(self, tp)
-                assert isinstance(tp, sequence)
+                assert issubclass(tp, sequence)
 
         class select(_Grant[sequence]):
             def __init__(self, tp: Type[sequence]):
                 _Grant.__init__(self, tp)
-                assert isinstance(tp, sequence)
+                assert issubclass(tp, sequence)
 
         class update(_Grant[sequence]):
             def __init__(self, tp: Type[sequence]):
                 _Grant.__init__(self, tp)
-                assert isinstance(tp, sequence)
+                assert issubclass(tp, sequence)
 
-    class function:
-        class execute(_Grant[function]):
-            def __init__(self, tp: Type[function]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, function)
+    # class function:
+    #     class execute(_Grant[function]):
+    #         def __init__(self, tp: Type[function]):
+    #             _Grant.__init__(self, tp)
+    #             assert issubclass(tp, function)
 
     class type:
         class usage(_Grant[sequence]):
             def __init__(self, tp: Type[sequence]):
                 _Grant.__init__(self, tp)
-                assert issubclass(tp, composite) or issubclass(tp, enums) or isinstance(tp, builtin)
+                assert issubclass(tp, pt.composite) or issubclass(tp, pt.enum) or isinstance(tp, pt.builtin)
 
 
-class _PermissionDetermineIfTargetIsRoleNode(CommonDetermineIfTargetIsDomainNode):
+class _PermissionDetermineIfTargetIsRoleNode(CommonDetermineIfObjectIsDomainNode):
     def __init__(self):
         super().__init__('permission-determine-if-target-is-domain-node', permission)
 

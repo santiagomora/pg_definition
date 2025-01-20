@@ -88,10 +88,18 @@ class Select(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'GRANT SELECT ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Select.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE SELECT ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Select.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Insert(Component, Grantable, Revokable):
@@ -100,10 +108,18 @@ class Insert(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'GRANT INSERT ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Insert.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE INSERT ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Insert.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Update(Component, Grantable, Revokable):
@@ -112,10 +128,18 @@ class Update(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'GRANT UPDATE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Update.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE UPDATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Update.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Delete(Component, Grantable, Revokable):
@@ -124,10 +148,18 @@ class Delete(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'GRANT DELETE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Delete.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE DELETE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Delete.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Truncate(Component, Grantable, Revokable):
@@ -136,10 +168,18 @@ class Truncate(Component, Grantable, Revokable):
             placeholder, identifiers = self.get_placeholders()
             return (f'GRANT TRUNCATE ON {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Truncate.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE TRUNCATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Truncate.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Usage(Component, Grantable, Revokable):
@@ -148,10 +188,18 @@ class Usage(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'GRANT USAGE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Usage.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE USAGE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Usage.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Execute(Component, Grantable, Revokable):
@@ -160,10 +208,18 @@ class Execute(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'GRANT EXECUTE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Execute.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE EXECUTE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Execute.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Create(Component, Grantable, Revokable):
@@ -172,10 +228,18 @@ class Create(Component, Grantable, Revokable):
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE CREATE ON {kind} {placeholder} TO ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Create.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             placeholder, identifiers, kind = self.get_placeholders()
             return (f'REVOKE CREATE ON {kind} {placeholder} FROM ' + '{}', identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Create.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
 
 
 class Role(Component, Grantable, Revokable):
@@ -183,12 +247,40 @@ class Role(Component, Grantable, Revokable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('GRANT {} TO {}', [sql.Identifier(self.action.name), sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Role.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
     class Revoke(Revoke):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('REVOKE {} FROM {}', [sql.Identifier(self.action.name), sql.Identifier(self.permission.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Role.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
+
 
 class References(Component, Grantable, Revokable):
+    class Grant(Grant):
+        def sql_sentence_params(self) -> SQLSentenceParams:
+            placeholder, identifiers, kind = self.get_placeholders()
+            columns_ph: list[str] = ['{}']*len(self.action.columns)
+            return (f'GRANT REFERENCES ({", ".join(columns_ph)}) ON {placeholder} TO ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers +  [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == References.Revoke\
+                and self.component.definition['type'] != other.component.definition['type']
+
+    class Revoke(Revoke):
+        def sql_sentence_params(self) -> SQLSentenceParams:
+            placeholder, identifiers, kind = self.get_placeholders()
+            columns_ph: list[str] = ['{}']*len(self.action.columns)
+            return (f'REVOKE REFERENCES ({", ".join(columns_ph)}) ON {placeholder} FROM ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers + [sql.Identifier(self.permission.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == References.Grant\
+                and self.component.definition['type'] != other.component.definition['type']
+
     def __init__(
         self, name: str, columns: tuple[str, ...], parent: Optional['Component'] = None,
         definition: Optional[dict[str, Any]] = None
@@ -196,17 +288,6 @@ class References(Component, Grantable, Revokable):
         Component.__init__(self, name, parent, definition)
         self.columns = columns
 
-    class Grant(Grant):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            placeholder, identifiers, kind = self.get_placeholders()
-            columns_ph: list[str] = ['{}']*len(self.action.columns)
-            return (f'GRANT REFERENCES ({", ".join(columns_ph)}) ON {placeholder} TO ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers +  [sql.Identifier(self.permission.name)], [], )
-
-    class Revoke(Revoke):
-        def sql_sentence_params(self) -> SQLSentenceParams:
-            placeholder, identifiers, kind = self.get_placeholders()
-            columns_ph: list[str] = ['{}']*len(self.action.columns)
-            return (f'REVOKE REFERENCES ({", ".join(columns_ph)}) ON {placeholder} FROM ' + '{}', [sql.Identifier(col) for col in self.action.columns] + identifiers + [sql.Identifier(self.permission.name)], [], )
 
 
 class PermissionActionBuilder(Builder):

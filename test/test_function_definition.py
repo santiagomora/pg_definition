@@ -1,17 +1,17 @@
-import psycopg
-import pg_definition as pg
-from typing_extensions import\
-    Annotated
-from typing import\
-    Optional
-import datetime
-import sys
-import pytest
-sys.path.append('./')
-import test_app as ta
-
-
-dsn_test_db: str = 'host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En'
+# import psycopg
+# import pg_definition as pg
+# from typing_extensions import\
+#     Annotated
+# from typing import\
+#     Optional
+# import datetime
+# import sys
+# import pytest
+# sys.path.append('./')
+# import test_app as ta
+# 
+# 
+# dsn_test_db: str = 'host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En'
 
 
 # 
@@ -142,60 +142,60 @@ dsn_test_db: str = 'host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub passwo
 #     except Exception:
 #         assert False
 
-
-@pytest.mark.asyncio
-async def test_sql_function_gets_parameters_correctly() -> None:
-    with pg.adapter_registry(dsn_test_db) as ar:
-        pg.register_types(ar)
-        ta.register_types(ar)
-
-    # NOTE test that function store post correctly
-    async with await psycopg.AsyncConnection.connect(dsn_test_db) as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SET SEARCH_PATH to test;")
-            # NOTE test single result function executed correctly
-            post_1: ta.test.post = await ta.test.get_post_by_id(cur, p_post_id=1)
-            assert isinstance(post_1, ta.test.post)
-            assert post_1.content == 'test content 1'
-            assert post_1.title == 'test title 1'
-            assert post_1.status == ta.test.post_status_enum.published
-            post_1_author: ta.test.author = await ta.test.get_author_by_id(
-                cur, p_author_id=post_1.author_id)
-            assert post_1_author.name == 'author 1'
-            assert post_1_author.id == 1
-
-            # NOTE test set returning function executed correctly
-            post_comments: list[ta.test.comment] = [
-                c async for c in ta.test.get_post_comments(
-                    cur, p_post=post_1)]
-            assert all([isinstance(c, ta.test.comment) for c in post_comments])
-            assert all([c.post_id == 1 for c in post_comments])
-            author_posts: list[ta.test.comment] = [
-                c async for c in ta.test.get_author_posts(
-                    cur, p_author=post_1_author)]
-            assert all([p.author_id == 1 for p in author_posts])
-            new_post: ta.test.post = await ta.test.create_post(
-                cur, p_author=post_1_author,
-                p_content='this is a new post',
-                p_title='new post title')
-            assert new_post.author_id == post_1_author.id
-            assert new_post.content == 'this is a new post'
-            assert new_post.title == 'new post title'
-            new_post_comment: ta.test.comment = await ta.test.create_comment(
-                cur, p_author=post_1_author,
-                p_content='new post test comment',
-                p_post=new_post)
-            assert new_post_comment.author_id == post_1_author.id
-            assert new_post_comment.content == 'new post test comment'
-            assert new_post_comment.post_id == new_post.id
-            new_post_comment: ta.test.comment = await ta.test.create_comment(
-                cur, p_author=post_1_author,
-                p_content='(new post test comment)', p_post=new_post)
-            cp: ta.test.comment_post = await ta.test.as_comment_post(
-                cur, p_post=new_post, p_comment=new_post_comment,
-                p_description='test description', p_author=post_1_author)
-            assert isinstance(cp, ta.test.comment_post)
-            assert isinstance(cp.post, ta.test.post)
-            assert isinstance(cp.comment, ta.test.comment)
-            assert isinstance(cp.description, pg.text)
-            assert isinstance(cp.author, ta.test.author)
+# 
+# @pytest.mark.asyncio
+# async def test_sql_function_gets_parameters_correctly() -> None:
+#     with pg.adapter_registry(dsn_test_db) as ar:
+#         pg.register_types(ar)
+#         ta.register_types(ar)
+# 
+#     # NOTE test that function store post correctly
+#     async with await psycopg.AsyncConnection.connect(dsn_test_db) as conn:
+#         async with conn.cursor() as cur:
+#             await cur.execute("SET SEARCH_PATH to test;")
+#             # NOTE test single result function executed correctly
+#             post_1: ta.test.post = await ta.test.get_post_by_id(cur, p_post_id=1)
+#             assert isinstance(post_1, ta.test.post)
+#             assert post_1.content == 'test content 1'
+#             assert post_1.title == 'test title 1'
+#             assert post_1.status == ta.test.post_status_enum.published
+#             post_1_author: ta.test.author = await ta.test.get_author_by_id(
+#                 cur, p_author_id=post_1.author_id)
+#             assert post_1_author.name == 'author 1'
+#             assert post_1_author.id == 1
+# 
+#             # NOTE test set returning function executed correctly
+#             post_comments: list[ta.test.comment] = [
+#                 c async for c in ta.test.get_post_comments(
+#                     cur, p_post=post_1)]
+#             assert all([isinstance(c, ta.test.comment) for c in post_comments])
+#             assert all([c.post_id == 1 for c in post_comments])
+#             author_posts: list[ta.test.comment] = [
+#                 c async for c in ta.test.get_author_posts(
+#                     cur, p_author=post_1_author)]
+#             assert all([p.author_id == 1 for p in author_posts])
+#             new_post: ta.test.post = await ta.test.create_post(
+#                 cur, p_author=post_1_author,
+#                 p_content='this is a new post',
+#                 p_title='new post title')
+#             assert new_post.author_id == post_1_author.id
+#             assert new_post.content == 'this is a new post'
+#             assert new_post.title == 'new post title'
+#             new_post_comment: ta.test.comment = await ta.test.create_comment(
+#                 cur, p_author=post_1_author,
+#                 p_content='new post test comment',
+#                 p_post=new_post)
+#             assert new_post_comment.author_id == post_1_author.id
+#             assert new_post_comment.content == 'new post test comment'
+#             assert new_post_comment.post_id == new_post.id
+#             new_post_comment: ta.test.comment = await ta.test.create_comment(
+#                 cur, p_author=post_1_author,
+#                 p_content='(new post test comment)', p_post=new_post)
+#             cp: ta.test.comment_post = await ta.test.as_comment_post(
+#                 cur, p_post=new_post, p_comment=new_post_comment,
+#                 p_description='test description', p_author=post_1_author)
+#             assert isinstance(cp, ta.test.comment_post)
+#             assert isinstance(cp.post, ta.test.post)
+#             assert isinstance(cp.comment, ta.test.comment)
+#             assert isinstance(cp.description, pg.text)
+#             assert isinstance(cp.author, ta.test.author)

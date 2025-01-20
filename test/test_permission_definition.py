@@ -3,7 +3,7 @@ from typing import\
     Any
 import sys
 sys.path.append('./')
-import test_app
+import test_app.backend as test_app
 
 
 def test_permission_definition_flow_detects_invalid_bases() -> None:
@@ -40,7 +40,7 @@ def test_role_definition_flow_detects_invalid_bases() -> None:
     except pg.FlowException as errors:
         e = errors.get_error('permission-definition-flow',
                              'role-validate-base-classes-node')
-        assert str(e) == "Role cant have <class 'pg_definition.types.permission.permission'> as a base class"
+        assert str(e) == "Role cant have <class 'pg_definition.objects.permission.permission'> as a base class"
 
     try:
         class test_permission_1(pg.permission):
@@ -119,7 +119,7 @@ def test_grants_correctly_applied_on_permission() -> None:
     test_grant(consult_perm_def['type_grants'], 'references', test_app.test.comment)
     test_grant(consult_perm_def['type_grants'], 'select', test_app.test.comment)
     create_perm_def: dict[str, Any] = getattr(commenter_def['permissions'][1], '__pg_definition')()
-    test_grant(create_perm_def['type_grants'], 'execute', test_app.test.create_comment)
-    test_grant(create_perm_def['type_grants'], 'update', test_app.test.comment_id_sequence)
-    test_grant(create_perm_def['type_grants'], 'usage', test_app.test.comment_id_sequence)
-    test_grant(create_perm_def['type_grants'], 'insert', test_app.test.comment)
+    # test_grant(create_perm_def['type_grants'], 'execute', test_app.test.create_comment)
+    test_grant(create_perm_def['type_grants'], 'update', test_app.schema.test.comment_id_sequence)
+    test_grant(create_perm_def['type_grants'], 'usage', test_app.schema.test.comment_id_sequence)
+    test_grant(create_perm_def['type_grants'], 'insert', test_app.schema.test.comment)

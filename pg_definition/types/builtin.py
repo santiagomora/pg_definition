@@ -2,11 +2,7 @@ from typing import\
     Any,\
     Union,\
     TypeAlias
-from pydantic_core import\
-    core_schema
-from pydantic import\
-    GetCoreSchemaHandler
-from .common.flow import\
+from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     DefinitionFlowBuilder,\
@@ -16,77 +12,48 @@ from .common.flow import\
     execute_definition_flow
 from typing import \
     Optional
-import numpy as np
-from datetime import\
-    datetime,\
-    date as _date,\
-    time
+import base_types as bt
+from ..objects.check import\
+    check
 
 
-# TODO configure flow components runtime dependencies
+__all__ = ['builtin']
+
+
 _builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('builtin-definition-flow')
 builtin_builder = DefinitionFlowBuilder(_builtin_definition_flow_root)
 
 
-__all__ = ['int4', 'int8', 'int2', 'text', 'float8', 'float4', 'bytea', 'char', 'timestamptz', 'timetz', 'date', 'bool', 'builtin_instance']
+class BuiltinDomainOperandDefinitionContext(bt.OperandDefinitionContext):
+    @classmethod
+    def parse_field(cls, field_instance: bt.field) -> str:
+        # illegal
+        raise NotImplementedError
+
+    @classmethod
+    def parse_this(cls, this_instance: bt.this) -> str:
+        return 'VALUE'
 
 
-class builtin(type):
-    def __new__(cls, clsname: str, clsbases: tuple[type],
-                clsdict: dict[str, Any], **kwargs) -> type:
+class compound(bt.compound):
+    pass
 
-        if len(clsbases) > 1:
-            raise TypeError(f'Class {cls} doesnt allow multiple bases')
 
-        def __new__(cls_, *args, **kwargs) -> Any:
-            instance = clsbases[0].__new__(cls_, *args, **kwargs)
-            if hasattr(clsbases[0], '__pg_validate_instance__'):
-                instance = clsbases[0].__pg_validate_instance__(instance)
-            return cls_.__pg_validate_instance__(instance)
-
-        @classmethod
-        def __pg_validate_instance__(cls, instance):
-            if hasattr(cls, '__pg_definition'):
-                definition = getattr(cls, '__pg_definition')()
-                if 'check' in definition and definition['check'] is not None:
-                    instance = definition['check']._validate(instance)
-            return instance
-
-        @classmethod
-        def __pg_attempt_to_create_instance__(cls, value, validation_info):
-            if value is None:
-                definition = getattr(cls, '__pg_definition')()
-                default_value = getattr(definition, 'default_value', None)
-                return value if default_value is None else default_value
-            creation_method = getattr(cls, '__pg_create_instance_custom__', cls.__pg_create_instance__)
-            return creation_method(value)
-
-        @classmethod
-        def __pg_create_instance__(cls, value):
-            return value if isinstance(value, cls) else cls(value)
-
-        @classmethod
-        def __get_pydantic_core_schema__(
-            cls, source: type,
-            handler: GetCoreSchemaHandler
-        ) -> core_schema.CoreSchema:
-            return core_schema.with_info_plain_validator_function(
-                function=cls.__pg_attempt_to_create_instance__)
-
-        def __repr__(self):
-            return str(self)
-
-        rettype: type = super()\
-            .__new__(cls, clsname, clsbases,
-                     {'__new__': __new__,
-                      '__repr__': __repr__,
-                      '__pg_validator': None,
-                      '__get_pydantic_core_schema__': __get_pydantic_core_schema__,
-                      '__pg_attempt_to_create_instance__': __pg_attempt_to_create_instance__,
-                      '__pg_create_instance__': __pg_create_instance__,
-                      '__pg_validate_instance__': __pg_validate_instance__} | clsdict)
+class builtin(bt.builtin):
+    def __new__(
+        cls, clsname: str, clsbases: tuple[type],
+        clsdict: dict[str, Any], *, check_predicate: Optional[check] = None,
+        default: Optional[bt.literal] = None
+    ) -> type:
+        rettype: type = super().__new__(
+            cls, clsname, clsbases, clsdict,
+            check_predicate=None if check_predicate is None else check_predicate.predicate, default=default
+        )
         execute_definition_flow(rettype, _builtin_definition_flow_root)
         return rettype
+
+    def definition_context(self) -> type[bt.OperandDefinitionContext]:
+        return BuiltinDomainOperandDefinitionContext
 
 
 class _BuiltinDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):
@@ -128,8 +95,9 @@ class _BuiltinDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
         definition['kind'] = 'domain'
-        definition['check'] = accumulator.get_definition('check', 'extraction')
-        definition['default_value'] = None
+        predicate = getattr(target, '__check_predicate__')()
+        definition['check'] = predicate.parent if predicate is not None else None
+        definition['default'] = getattr(target, '__default__')()
         accumulator.add_definition('final', definition)
 
 
@@ -142,83 +110,41 @@ builtin_builder\
         .end_choice()
 
 
-class int2(np.int16, metaclass=builtin):
+class int2(bt.int2, metaclass=builtin):
     pass
 
 
-class int4(np.int32, metaclass=builtin):
+class int4(bt.int4, metaclass=builtin):
     pass
 
 
-class int8(np.int64, metaclass=builtin):
+class int8(bt.int8, metaclass=builtin):
     pass
 
 
-class text(str, metaclass=builtin):
+class float4(bt.float4, metaclass=builtin):
     pass
 
 
-class float4(np.float32, metaclass=builtin):
+class float8(bt.float8, metaclass=builtin):
     pass
 
 
-class float8(np.float64, metaclass=builtin):
+class int1(bt.int1, metaclass=builtin):
     pass
 
 
-class char(np.int8, metaclass=builtin):
+class bool(bt.bool, metaclass=builtin):
     pass
 
 
-class bytea(bytes, metaclass=builtin):
+class text(bt.text, metaclass=builtin):
     pass
 
 
-class bool(np.bool, metaclass=builtin):
+class timestamptz(bt.timestamptz, metaclass=builtin):
     pass
 
 
-def _create_from_model_field(cls: type, value: Any):
-    if isinstance(value, cls):
-        return value
-    elif isinstance(value, str):
-        return cls.fromisoformat(value)
-    raise ValueError(f'Invalid value for {cls.__name__}')
-
-
-# we'll always work with ISO8061 utc timestamptzs, what will change is
-# how these representations get stored into the database, we will
-# have to define each function for conversion
-class timestamptz(datetime, metaclass=builtin):
-    def __new__(
-        cls, *args, **kwargs
-    ):
-        if isinstance(args[0], str):
-            t: timestamptz = cls.fromisoformat(args[0])
-            args = (t.year, t.month, t.day, t.hour, t.minute, t.second, t.microsecond)
-        return super().__new__(cls, *args, **kwargs)
-
-
-class timetz(time, metaclass=builtin):
-    # timetz will always be a tuple, as it is possible to specify timetz units
-    # first parameter can be a 'hh?:mm?:ss?,(...)' string or an int4
-    def __new__(
-        cls, *args, **kwargs
-    ):
-        if isinstance(args[0], str):
-            t: timetz = cls.fromisoformat(args[0])
-            args = (t.hour, t.minute, t.second, t.microsecond)
-        return super().__new__(cls, *args, **kwargs)
-
-
-class date(_date, metaclass=builtin):
-    def __new__(
-        cls, *args, **kwargs
-    ):
-        if isinstance(args[0], str):
-            d: date = cls.fromisoformat(args[0])
-            args = (d.year, d.month, d.day)
-        return super().__new__(cls, *args, **kwargs)
-
-
-builtin_instance: TypeAlias = Union[int4, int8, int2, text, float8, float4, bytea, char, timestamptz, timetz, date, bool]
+class date(bt.date, metaclass=builtin):
+    pass

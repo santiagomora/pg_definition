@@ -210,12 +210,9 @@ class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
                         node.execute(on_type, acc)
                     except NodeException as e:
                         accumulator.add_exception(self.name, e)
-                    except FlowException as e:
-                        raise e
-                    except RuntimeError as e:
-                        raise e
                     except Exception as e:
-                        accumulator.add_exception(self.name, NodeException(node.name, [str(e)]))
+                        raise e
+                        # accumulator.add_exception(self.name, NodeException(node.name, [str(e)]))
                     node = node.get_next(acc)
 
 

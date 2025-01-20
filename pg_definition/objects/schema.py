@@ -1,40 +1,100 @@
+import os
 from typing import\
     Any
-from .common.flow import\
+from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     SingleChoiceDefinitionFlowNode,\
     DefinitionFlowBuilder,\
     execute_definition_flow,\
     NodeException
-import os
+from ..types.composite import\
+    composite
+from ..types.table import\
+    table
+from ..types.enums import\
+    enum
+from .sequence import\
+    sequence
+from typing import\
+    Generator
+# from .function import\
+#     function
 
 
-__all__ = ['schema']
+__all__ = ['schema', 'register_function_path_alias']
 
 
 _schema_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('schema-definition-flow')
 schema_definition_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_schema_definition_flow_root)
 
 
-class schema_builtin(type):
+class _schema(type):
     def __new__(
-        cls, clsname: str, clsbases: tuple[type],
-        clsdict: dict[str, Any], **kwargs
+        cls, clsname: str, clsbases: tuple[type], clsdict: dict[str, Any]
     ) -> type:
-        try:
-            for base in clsbases:
-                if not issubclass(base, schema):
-                    raise TypeError(f'Schema base class "{base}" must inherit from {schema}')
-        except NameError:
-            pass
-        rettype: type = super()\
-            .__new__(cls, clsname, clsbases, clsdict)
+
+        if len(clsbases) > 1:
+            raise TypeError(f'Class {cls} doesnt allow multiple bases')
+
+        rettype: type = super().__new__(
+            cls, clsname, clsbases, clsdict
+        )
+
         execute_definition_flow(rettype, _schema_definition_flow_root)
         return rettype
 
+    @property
+    def tables(self) -> Generator[type[table], None, None]:
+        schema_def: dict[str, Any] = self.__pg_definition()
+        for name, tp in schema_def['objects'].items():
+            if issubclass(tp, table):
+                yield tp
 
-class schema(metaclass=schema_builtin):
+    @property
+    def composites(self) -> Generator[type[composite], None, None]:
+        schema_def: dict[str, Any] = self.__pg_definition()
+        for name, tp in schema_def['objects'].items():
+            if not issubclass(tp, composite):
+                continue
+            tp_def: dict[str, Any] = getattr(tp, '__pg_definition')()
+            if 'base_type' not in tp_def:
+                yield tp
+
+    @property
+    def enums(self) -> Generator[enum, None, None]:
+        schema_def: dict[str, Any] = self.__pg_definition()
+        for name, tp in schema_def['objects'].items():
+            if not isinstance(tp, enum):
+                continue
+            tp_def: dict[str, Any] = getattr(tp, '__pg_definition')()
+            if 'base_type' not in tp_def:
+                yield tp
+
+    @property
+    def domains(self) -> Generator[enum, None, None]:
+        schema_def: dict[str, Any] = self.__pg_definition()
+        for name, tp in schema_def['objects'].items():
+            tp_def: dict[str, Any] = getattr(tp, '__pg_definition')()
+            if 'base_type' in tp_def:
+                yield tp
+
+    # @property
+    # def functions(self) -> Generator[function, None, None]:
+    #     schema_def: dict[str, Any] = self.__pg_definition()
+    #     for name, tp in schema_def['objects'].items():
+    #         if isinstance(tp, function):
+    #             yield tp
+
+    @property
+    def sequences(self) -> Generator[sequence, None, None]:
+        schema_def: dict[str, Any] = self.__pg_definition()
+        for name, tp in schema_def['objects'].items():
+            if isinstance(tp, sequence):
+                yield tp
+
+
+class schema(metaclass=_schema):
     pass
 
 

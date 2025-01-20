@@ -1,10 +1,7 @@
 from typing import\
     Any,\
     Optional
-from enum import\
-    EnumMeta,\
-    StrEnum
-from .common.flow import\
+from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     SingleChoiceDefinitionFlowNode,\
@@ -13,64 +10,53 @@ from .common.flow import\
     FlowException,\
     NodeException,\
     execute_definition_flow
-from .common.node import\
+from ..common.node import\
     CommonDetermineIfTargetIsDomainNode
+import base_types as bt
 
 
-_enums_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('enums-definition-flow')
-enums_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_enums_definition_flow_root)
+__all__ = ['enum']
 
 
-class enums_builtin(EnumMeta):
+_enum_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('enum-definition-flow')
+enum_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_enum_definition_flow_root)
+
+
+class enum(bt.enum):
     def __new__(
-        cls, clsname: str, clsbases: tuple[type],
-        clsdict: dict[str, Any], **kwargs
+        cls, clsname: str, clsbases: tuple[type], clsdict: dict[str, Any], *,
+        default: Optional[bt.literal] = None
     ) -> type:
-        if len(clsbases) > 1:
-            raise TypeError(f'Class {cls} doesnt allow multiple bases')
-
-        try:
-            if clsbases[0] != enums:
-                # the class is a domain
-                for member in clsbases[0]:
-                    clsdict[member.name] = member.value
-        except NameError:
-            pass
-        rettype: type = super()\
-            .__new__(cls, clsname, clsbases, clsdict)
-        execute_definition_flow(rettype, _enums_definition_flow_root)
+        rettype: type = super().__new__(
+            cls, clsname, clsbases, clsdict,
+            default=default
+        )
+        execute_definition_flow(rettype, _enum_definition_flow_root)
         return rettype
-
-    @staticmethod
-    def _check_for_existing_members_(cls, bases):
-        pass
-
-
-class enums(StrEnum, metaclass=enums_builtin):
-    pass
 
 
 class _EnumDetermineIfTargetIsDomainNode(CommonDetermineIfTargetIsDomainNode):
     def __init__(self):
-        super().__init__('enums-determine-if-target-is-domain-node',
-                         enums)
+        super().__init__('enum-determine-if-target-is-domain-node')
 
     def get_next(self, accumulator: FlowAccumulator) -> DefinitionFlowNode:
         try:
             if self.is_domain:
-                return self._nodes['enums-domain-validate-members-node']
-            return self._nodes['enums-validate-members-node']
+                return self._nodes['enum-domain-validate-members-node']
+            return self._nodes['enum-validate-members-node']
         except KeyError as e:
             raise FlowException(f'Choice not found in node {self.name}: {str(e)}')
 
 
 class _EnumValidateMembersNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
-        super().__init__('enums-validate-members-node')
+        super().__init__('enum-validate-members-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        if target._member_names_ == []:
-            raise NodeException(self.name, [f'{target} enums must define own members if it inherits from {enums}'])
+        # if len(target.__members__.values()) == 0:
+            # raise NodeException(self.name, [f'{target} enum must define own members if it inherits from {enum}'])
+        if target.__default__() is not None:
+            raise NodeException(self.name, [f'{target} enum cant define default values'])
 
 
 class _EnumExtractMembersNode(SingleChoiceDefinitionFlowNode):
@@ -79,16 +65,16 @@ class _EnumExtractMembersNode(SingleChoiceDefinitionFlowNode):
     """
 
     def __init__(self):
-        super().__init__('enums-extract-members-node')
+        super().__init__('enum-extract-members-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         members: dict[str, str] = {}
-        for member in target:
-            members[member.name] = member.value
+        for name in target.__members__.values():
+            members[name] = name
         accumulator.add_definition('members', members)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('enums-validate-members-node', )
+        return ('enum-validate-members-node', )
 
 
 class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
@@ -97,7 +83,7 @@ class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     """
 
     def __init__(self):
-        super().__init__('enums-store-final-definition-node')
+        super().__init__('enum-store-final-definition-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
@@ -109,26 +95,27 @@ class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('enums-extract-members-node', )
+        return ('enum-extract-members-node', )
 
 
 class _EnumDomainValidateMembersNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
-        super().__init__('enums-domain-validate-members-node')
+        super().__init__('enum-domain-validate-members-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         target_base: type = target.__bases__[0]
         errors: list[str] = []
-        for member in target:
-            if member.name not in target_base._member_names_:
-                errors.append(f'{target} enums cant define own member {member.name} if it inherits from a {enums} subclass')
+        for member in target.__members__.values():
+            print( member.name not in target_base.__members__)
+            if member.name not in target_base.__members__:
+                errors.append(f'{target} enum cant define own member {member.name} if it inherits from a {enum} subclass')
         if len(errors) > 0:
             raise NodeException(self.name, errors)
 
 
 class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
     def __init__(self):
-        super().__init__('enums-domain-store-final-definition-node')
+        super().__init__('enum-domain-store-final-definition-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
@@ -137,14 +124,14 @@ class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
         definition['kind'] = 'domain'
-        definition['default_value'] = None
+        definition['default'] = target.__default__()
         accumulator.add_definition('final', definition)
 
     def get_dependencies(self) -> tuple[str]:
-        return ('enums-domain-validate-members-node', )
+        return ('enum-domain-validate-members-node', )
 
 
-enums_flow_builder\
+enum_flow_builder\
     .at_work_path('validation')\
         .add_node(_EnumDetermineIfTargetIsDomainNode)\
         .build_choice(_EnumValidateMembersNode)\
@@ -157,6 +144,4 @@ enums_flow_builder\
             .at_work_path('')\
             .add_node(_EnumDomainStoreFinalDefinitionNode).critical()\
             .end_choice()
-
-__all__ = {'enums': enums}
 

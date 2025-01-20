@@ -21,6 +21,9 @@ class Component:
         self.parent = parent
         self.definition = definition
 
+    def __repr__(self):
+        return f'{self.__class__.__qualname__}({self.name})'
+
 
 class Builder(ABC):
     pass
@@ -39,6 +42,15 @@ class GeneratesSQLSentence(ABC):
     @abstractmethod
     def sql_sentence_params(self) -> SQLSentenceParams:
         pass
+
+    @abstractmethod
+    def is_opposite(self, other: 'GeneratesSQLSentence') -> bool:
+        pass
+
+
+class Sentence(WrapsComponent, GeneratesSQLSentence):
+    def __repr__(self):
+        return f'{self.__class__.__name__}({repr(self.component)})'
 
 
 def load_functions_from_file(

@@ -16,48 +16,51 @@ from .common import\
     SQLSentenceParams,\
     GeneratesSQLSentence
 from .common import\
-    load_functions_from_file
+    load_functions_from_file,\
+    Sentence
 
 
 __all__ = ['builder']
 
 
-# TODO: add create function builder
-# TODO: it must be possible to grant/revoke from roles on tables, sequences and functions
-# TODO: when creating a table or a sequence it must be possible to revoke all permissions from it from all roles
 # TODO: when creating a table or a sequence it must be possible to revoke all permissions from it
-# TODO: add create role builder for permissions as groups of grants over defined objects, and roles as groups of permissions
-class Alter(WrapsComponent, GeneratesSQLSentence):
+class Alter(Sentence):
     def __init__(
         self, component: Component, change: Union['Add', 'Drop', 'Rename', 'Set']
     ) -> None:
         WrapsComponent.__init__(self, component)
         self.change = change
 
+    def __repr__(self):
+        return f'{self.__class__.__qualname__}({repr(self.component)}, {repr(self.change)})'
 
-class Rename(WrapsComponent, GeneratesSQLSentence):
+
+class Rename(Sentence):
     def __init__(self, component: Component, old_name: str):
         WrapsComponent.__init__(self, component)
         self.old_name = old_name
 
+    def __repr__(self):
+        return f'{self.__class__.__qualname__}({repr(self.component)}, from={self.old_name})'
 
-class Set(WrapsComponent, GeneratesSQLSentence):
+
+class Set(Sentence):
     pass
 
 
-class Add(WrapsComponent, GeneratesSQLSentence):
+class Add(Sentence):
     pass
 
 
-class Drop(WrapsComponent, GeneratesSQLSentence):
+class Drop(Sentence):
     pass
 
 
-class Create(WrapsComponent, GeneratesSQLSentence):
+class Create(Sentence):
     pass
 
 
-class Execute(WrapsComponent, GeneratesSQLSentence):
+class Execute(Sentence):
     pass
 
 
@@ -73,23 +76,38 @@ class ChecksDefinitionPresence:
 
 class Droppable(ChecksDefinitionPresence):
     def drop(self) -> Drop:
-        self.check_definition_is_not_present()
+        # self.check_definition_is_not_present()
         return self.__class__.Drop(self)
 
 
 class Addable(ChecksDefinitionPresence):
     def add(self) -> Add:
-        self.check_definition_is_present()
+        # self.check_definition_is_present()
         return self.__class__.Add(self)
+
+
+class Renamable(ChecksDefinitionPresence):
+    def rename_from(self, old_name: str) -> Rename:
+        # self.check_definition_is_present()
+        assert self.name != old_name
+        return self.__class__.Rename(self, old_name)
+
+
+class Settable(ChecksDefinitionPresence):
+    def set(self) -> Set:
+        # self.check_definition_is_present()
+        return self.__class__.Set(self)
 
 
 class Alterable:
     def alter(self, change: Union[Add, Drop, 'Alter', 'Rename']) -> Alter:
+        # self.check_definition_is_present()
         return self.__class__.Alter(self, change)
 
 
 class Creatable:
     def create(self) -> Create:
+        # self.check_definition_is_present()
         return self.__class__.Create(self)
 
 
@@ -98,29 +116,19 @@ class Executable:
         return self.__class__.Execute(self)
 
 
-class Renamable(ChecksDefinitionPresence):
-    def rename_from(self, old_name: str) -> Rename:
-        self.check_definition_is_present()
-        assert self.name != old_name
-        return self.__class__.Rename(self, old_name)
-
-
-class Settable(ChecksDefinitionPresence):
-    def set(self) -> Set:
-        self.check_definition_is_present()
-        return self.__class__.Set(self)
-
-
 class Type(Component, Settable):
     class Set(Set):
         def sql_sentence_params(self) -> GeneratesSQLSentence:
             return ('TYPE {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Type.Set\
+                and self.component.definition['type'] != other.component.definition['type']
+
 
 class TypeBuilder(Builder):
     def __init__(
-        self, parent_builder: Builder,
-        tp: Type, alter_lambda: Callable[[Builder, Set], None]
+        self, parent_builder: Builder, tp: Type, alter_lambda: Callable[[Builder, Set], None]
     ) -> None:
         self.parent_builder = parent_builder
         self.tp = tp
@@ -140,17 +148,30 @@ class Constraint(Component, Droppable, Addable, Renamable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('ADD CONSTRAINT {} ', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Constraint.Drop\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP CONSTRAINT {}', [sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return issubclass(other.__class__, Constraint.Add)\
+                and self.component.name == other.component.name
 
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME CONSTRAINT {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and self.component.name == other.old_name
+
 
 class PrimaryKey(Constraint):
-    class Add(Add):
+    class Add(Constraint.Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
@@ -158,7 +179,7 @@ class PrimaryKey(Constraint):
 
 
 class ForeignKey(Constraint):
-    class Add(Add):
+    class Add(Constraint.Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
@@ -166,7 +187,7 @@ class ForeignKey(Constraint):
 
 
 class UniqueConstraint(Constraint):
-    class Add(Add):
+    class Add(Constraint.Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
@@ -174,7 +195,7 @@ class UniqueConstraint(Constraint):
 
 
 class CheckConstraint(Constraint):
-    class Add(Add):
+    class Add(Constraint.Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('ADD CONSTRAINT {} CHECK {}', [sql.Identifier(self.component.name), sql.SQL(str(self.component.definition))], [], )
 
@@ -208,19 +229,35 @@ class Expression(Component, Droppable, Addable):
 
 
 class Default(Component, Droppable, Settable):
+    class Undefined:
+        pass
+
     class Set(Set):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            if isinstance(self.component.definition, pg.meta.default_value):
-                return ('SET DEFAULT {}', [sql.SQL(str(self.component.definition))], [], )
-            elif isinstance(self.component.definition, pg.meta.default_nextval):
+            if isinstance(self.component.definition, Default.Undefined):
+                return ('SET NOT NULL', [], [], )
+            if self.component.definition is None:
+                return ('SET DEFAULT NULL', [], [], )
+            elif isinstance(self.component.definition, pg.Operand):
+                return ('SET DEFAULT EXPRESSION {}', [sql.SQL(str(self.component.definition))], [], )
+            elif isinstance(self.component.definition, pg.nextval):
                 seq_def: dict[str, Any] = getattr(self.component.definition.seq, '__pg_definition')()
                 return ('SET DEFAULT nextval(%s)', [], [f'{seq_def["schema"]}.{self.component.definition.seq.__name__}'], )
             else:
-                raise ValueError(f'Unkown default value type: "{self.component.definition}"')
+                return ('SET DEFAULT {}', [sql.SQL(str(self.component.definition))], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Default.Drop
 
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP DEFAULT', [], [], )
+            if isinstance(self.component.definition, Default.Undefined):
+                return ('DROP NOT NULL', [], [], )
+            else:
+                return ('DROP DEFAULT', [], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Default.Set
 
 
 class DefaultBuilder(Builder):
@@ -242,31 +279,41 @@ class DefaultBuilder(Builder):
 
 
 class Column(Component, Alterable, Droppable, Addable, Renamable):
-    class SetType(Alter):
-        def __init__(
-            self, component: 'Column', old_type: type, new_type: type
-        ) -> None:
-            Alter.__init__(component)
-            self.old_type: type = old_type
-            self.new_type: type = new_type
-
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
             return ('ADD COLUMN {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Column.Drop\
+                and self.component.name == other.component.name
 
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER COLUMN {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP COLUMN {}', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class == Column.Add\
+                and self.component.name == other.component.name
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME COLUMN {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and self.component.name == other.old_name
 
 
 class TableColumnBuilder(Builder):
@@ -277,7 +324,7 @@ class TableColumnBuilder(Builder):
         self.parent_builder = parent_builder
 
     def default(self) -> DefaultBuilder:
-        default = Default('default_value', self.column, self.column.definition['default_value'])
+        default = Default('default', self.column, self.column.definition.get('default', Default.Undefined()))
         return DefaultBuilder(
             self.parent_builder, default,
             lambda column, change: column.parent.alter(column.alter(change)))
@@ -296,7 +343,7 @@ class TableColumnBuilder(Builder):
         self.parent_builder.append(self.column.parent.alter(self.column.drop()))
         return self.parent_builder
 
-    def rename_from(self, *, old_name: str) -> 'TableBuilder':
+    def rename_from(self, *, old_name: str) -> 'SchemaBuilder':
         self.parent_builder.append(self.column.parent.alter(self.column.rename_from(old_name)))
         return self.parent_builder
 
@@ -311,18 +358,36 @@ class Index(Component, Droppable, Renamable, Creatable, Alterable):
             schema = self.component.parent.definition['schema'].__name__
             return (f'CREATE{" UNIQUE" if unique else ""} ' + 'INDEX {} ON {}.{} USING ' + tp + f' ({", ".join(placeholders)})', [sql.Identifier(self.component.name), sql.Identifier(schema), sql.Identifier(self.component.parent.name)] + columns, [])
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Index.Drop\
+                and self.component.name == other.component.name
+
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER INDEX {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP INDEX {}', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Index.Create\
+                and self.component.name == other.component.name
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and self.component.name == other.old_name
 
 
 class IndexBuilder(Builder):
@@ -338,11 +403,11 @@ class IndexBuilder(Builder):
         self.parent_builder.append(t.alter(self.index.rename_from(old_name)))
         return self.parent_builder
 
-    def drop(self) -> 'TableBuilder':
+    def drop(self) -> 'SchemaBuilder':
         self.parent_builder.append(self.index.drop())
         return self.parent_builder
 
-    def create(self) -> 'TableBuilder':
+    def create(self) -> 'SchemaBuilder':
         self.parent_builder.append(self.index.create())
         return self.parent_builder
 
@@ -359,21 +424,39 @@ class Table(Component, Droppable, Creatable, Alterable, Renamable):
                 placeholders += ['{}.{}']
             return ('CREATE TABLE {}.{} () INHERITS ' + f'({", ".join(placeholders)})' if len(bases) > 0 else 'CREATE TABLE {}.{} ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + bases, [])
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Table.Drop\
+                and self.component.name == other.component.name
+
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params =  self.change.sql_sentence_params()
             return ('ALTER TABLE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP TABLE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Table.Create\
+                and self.component.name == other.component.name
 
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
 
-class TableBuilder(list[Any], Builder):
+
+class TableBuilder(Builder):
     def __init__(
         self, parent_builder: 'SchemaBuilder', table: Table
     ) -> None:
@@ -414,6 +497,10 @@ class TableBuilder(list[Any], Builder):
         self.parent_builder.append(self.table.create())
         return self.parent_builder
 
+    def drop(self) -> 'SchemaBuilder':
+        self.parent_builder.append(self.table.drop())
+        return self.parent_builder
+
 
 class Attribute(Component, Renamable, Addable, Droppable, Alterable):
     class Alter(Alter):
@@ -421,18 +508,36 @@ class Attribute(Component, Renamable, Addable, Droppable, Alterable):
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER ATTRIBUTE {} ' + change_sentence, [sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
             return ('ADD ATTRIBUTE {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Attribute.Drop\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP ATTRIBUTE {}', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Attribute.Add\
+                and self.component.name == other.component.name
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME ATTRIBUTE {} TO {}', [sql.Identifier(self.old_name), sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
 
 
 class CompositeAttributeBuilder(Builder):
@@ -466,18 +571,36 @@ class Composite(Component, Renamable, Alterable, Droppable, Creatable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('CREATE TYPE {}.{} AS ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Composite.Drop\
+                and self.component.name == other.component.name
+
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER TYPE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params)
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP TYPE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Composite.Create\
+                and self.component.name == other.component.name
 
 
 class CompositeBuilder(Builder):
@@ -510,9 +633,19 @@ class Value(Component, Addable, Renamable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('ADD VALUE %s', [], [self.component.name], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            # there is no way of dropping an enum value, the safest way involves
+            # in dropping the enum and recreating it without the value
+            return True
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME VALUE %s TO %s', [], [self.old_name, self.component.name], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
 
 
 class EnumValueBuilder(Builder):
@@ -536,18 +669,36 @@ class Enum(Component, Renamable, Alterable, Droppable, Creatable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('CREATE TYPE {}.{} AS ENUM ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Enum.Drop\
+                and self.component.name == other.component.name
+
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER TYPE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP TYPE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Enum.Add\
+                and self.component.name == other.component.name
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
 
 
 class EnumBuilder(Builder):
@@ -581,18 +732,36 @@ class Domain(Component, Creatable, Alterable, Renamable, Droppable):
             tdef: dict[str, Any] = getattr(self.component.definition["base_type"], '__pg_definition')()
             return ('CREATE DOMAIN {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Domain.Drop\
+                and other.component.name == self.component.name
+
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER DOMAIN {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP DOMAIN {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Domain.Create\
+                and self.component.name == other.component.name
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
 
 
 class DomainBuilder(Builder):
@@ -622,13 +791,22 @@ class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
             base_tdef = getattr(self.component.definition["base_type"], '__pg_definition')()
             return ('CREATE SEQUENCE {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(base_tdef['schema'].__name__), sql.Identifier(base_tdef['type'].__name__)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Sequence.Drop\
+                and self.component.name == other.component.name
+
     class Alter(Alter):
         def sql_sentence_params(self) -> SQLSentenceParams:
             change_sentence, change_identifiers, change_params = self.change.sql_sentence_params()
             return ('ALTER SEQUENCE {}.{} ' + change_sentence, [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + change_identifiers, change_params, )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.change.is_opposite(other.change)\
+                and self.component.name == other.component.name
+
     class Type(Type):
-        class Set(Set):
+        class Set(Type.Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
                 return ('AS {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
 
@@ -637,28 +815,53 @@ class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
             def sql_sentence_params(self) -> SQLSentenceParams:
                 return ('MINVALUE %s', [], [self.component.definition])
 
+            def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+                return other.__class__ == self.__class__\
+                    and self.component.definition != other.component.definition
+
     class MaxValue(Component, Settable):
         class Set(Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
                 return ('MAXVALUE %s', [], [self.component.definition])
+
+            def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+                return other.__class__ == self.__class__\
+                    and self.component.definition != other.component.definition
 
     class Increment(Component, Settable):
         class Set(Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
                 return ('INCREMENT BY %s', [], [self.component.definition])
 
+            def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+                return other.__class__ == self.__class__\
+                    and self.component.definition != other.component.definition
+
     class Cycle(Component, Settable):
         class Set(Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
                 return ('CYCLE', [], [], )
 
+            def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+                return other.__class__ == self.__class__\
+                    and self.component.definition != other.component.definition
+
     class Rename(Rename):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('RENAME TO {}', [sql.Identifier(self.component.name)], [], )
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == self.__class__\
+                and self.old_name == other.component.name\
+                and other.old_name == self.component.name
+
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return ('DROP SEQUENCE {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Sequence.Create\
+                and self.component.name == other.component.name
 
 
 class SequenceAttributeBuilder(Builder):
@@ -726,6 +929,18 @@ class Function(Component, Executable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return (self.component.definition['type'].as_sql_query('PERFORM', self.params), [], self.params, )
 
+        def _get_action_name(self):
+            if self.component.name.endswith("rollback"):
+                return "rollback"
+            elif self.component.name.endswith("commit"):
+                return "commit"
+            else:
+                raise ValueError(f'Invalid function name: "{self.component.name}"')
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return isinstance(other, Function.Execute)\
+                and other.component.name.endswith("commit" if self._get_action_name() == "rollback" else "commit")
+
     def execute(self, params: dict[str, Any]) -> Execute:
         return self.__class__.Execute(self, params)
 
@@ -747,6 +962,9 @@ class LoadedFunction(Component, Creatable, Droppable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return (self.component.definition, [], [])
 
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return True
+
     class Drop(Drop):
         def __init__(self, component: Component, overload: dict[str, Any]):
             Execute.__init__(self, component)
@@ -760,6 +978,9 @@ class LoadedFunction(Component, Creatable, Droppable):
                 overload += [sql.Identifier(param_name), sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
                 placeholders.append('{} {}.{}')
             return ('DROP FUNCTION {}.{} ' + f'({", ".join(placeholders )})', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + overload, [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return True
 
     def drop(self, overload: dict[str, type]) -> Drop:
         # TODO validate overload is not present in schema
@@ -801,11 +1022,19 @@ class LoadFunctionBuilder(list[Any], Builder):
 class Schema(Component, Creatable, Droppable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('CREATE SCHEMA {}', [sql.Identifier(self.component.parent.name)], [], )
+            return ('CREATE SCHEMA {}', [sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Schema.Drop\
+                and self.component.name == other.component.name
 
     class Drop(Drop):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('DROP SCHEMA {}', [sql.Identifier(self.component.parent.name)], [], )
+            return ('DROP SCHEMA {}', [sql.Identifier(self.component.name)], [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return other.__class__ == Schema.Create\
+                and self.component.name == other.component.name
 
     def search_object(self, name: str) -> Optional[type]:
         return self.definition['objects'].get(name, None)
@@ -850,11 +1079,11 @@ class SchemaBuilder(list[Any], Builder):
 
     def create(self) -> 'SchemaBuilder':
         self.append(self.schema.create())
-        return self.parent_builder
+        return self
 
     def drop(self) -> 'SchemaBuilder':
         self.append(self.schema.drop())
-        return self.parent_builder
+        return self
 
 
 def builder(schema: type) -> SchemaBuilder:

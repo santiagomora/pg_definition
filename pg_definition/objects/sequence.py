@@ -1,57 +1,78 @@
 from typing import\
     Any,\
-    Optional
-from .common.flow import\
+    Optional,\
+    Union,\
+    get_args,\
+    TypeAlias
+from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
     SingleChoiceDefinitionFlowNode,\
     DefinitionFlowBuilder,\
     NodeException,\
     execute_definition_flow
-from .builtin import\
-    int8,\
+from dataclasses import\
+    dataclass
+import base_types as bt
+from ..types.builtin import\
+    int1,\
     int2,\
     int4,\
-    builtin
+    int8
 
 
-__all__ = ['int8_sequence', 'int4_sequence', 'int2_sequence', 'check', 'max_value', 'min_value', 'increment']
+__all__ = ['sequence', 'max_value', 'min_value', 'increment', 'nextval']
 
 
 _sequence_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('sequence-definition-flow')
 sequence_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilder(_sequence_definition_flow_root)
 
 
-class sequence(builtin):
+SequenceAllowedBases: TypeAlias = Union[int8, int4, int2, int1]
+
+
+class _sequence(type):
     def __new__(
         cls, clsname: str, clsbases: tuple[type],
-        clsdict: dict[str, Any], **kwargs
+        clsdict: dict[str, Any], base: Optional[SequenceAllowedBases]
     ) -> type:
+
         if len(clsbases) > 1:
             raise TypeError(f'Class {cls} doesnt allow multiple bases')
+
+        def __seq_base__() -> Optional[SequenceAllowedBases]:
+            return base
+
+        rettype: type = super().__new__(
+            cls, clsname, clsbases, clsdict | {'__seq_base__': __seq_base__}
+        )
+
         try:
-            allowed_bases: tuple[type, ...] = (int8_sequence, int4_sequence, int2_sequence, )
-            if clsbases[0] not in allowed_bases:
-                raise TypeError(f'Class {clsname} must be a subclass of any of these classes {allowed_bases}')
+            assert sequence is not None
+            allowed_bases = get_args(SequenceAllowedBases)
+            if not any([issubclass(base, tp) for tp in allowed_bases]):
+                raise TypeError(f'Class {clsname} must be any of these classes {allowed_bases}')
+            execute_definition_flow(rettype, _sequence_definition_flow_root)
         except NameError:
             pass
-        rettype: type = super()\
-            .__new__(cls, clsname, clsbases, clsdict)
-        execute_definition_flow(rettype, _sequence_definition_flow_root)
         return rettype
 
 
-class _SequenceValidateBaseClassesClassNode(SingleChoiceDefinitionFlowNode):
-    def __init__(self):
-        super().__init__('sequence-validate-base-classes-node')
+class sequence(metaclass=_sequence, base=None):
+    pass
 
-    def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        base_cls_count: dict[type, int] = {}
-        for base_cls in target.mro():
-            base_cls_count[base_cls] = base_cls_count.get(base_cls, 0) + 1
-        appearance_count = sum([base_cls_count.get(tp, 0) for tp in (int4, int8, int2, )])
-        if appearance_count > 1:
-            raise NodeException(f'Sequence cant inherit from more than one {int4}, {int8} or {int2}')
+
+# class _SequenceValidateBaseClassesClassNode(SingleChoiceDefinitionFlowNode):
+#     def __init__(self):
+#         super().__init__('sequence-validate-base-classes-node')
+# 
+#     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
+#         base_cls_count: dict[type, int] = {}
+#         for base_cls in target.mro():
+#             base_cls_count[base_cls] = base_cls_count.get(base_cls, 0) + 1
+#         appearance_count = sum([base_cls_count.get(tp, 0) for tp in (int4, int8, int2, )])
+#         if appearance_count > 1:
+#             raise NodeException(f'Sequence cant inherit from more than one {int4}, {int8} or {int2}')
 
 
 class _SequenceExtractBaseTypeNode(SingleChoiceDefinitionFlowNode):
@@ -59,15 +80,7 @@ class _SequenceExtractBaseTypeNode(SingleChoiceDefinitionFlowNode):
         super().__init__('sequence-extract-base-type-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        extracted: Optional[type] = None
-        for base_cls in target.mro():
-            if base_cls in (int4, int8, int2, ):
-                extracted = base_cls
-                break
-        accumulator.add_definition('base_type', extracted)
-
-    def get_dependencies(self) -> tuple[str]:
-        return ('sequence-validate-base-classes-node', )
+        accumulator.add_definition('base_type', getattr(target, '__seq_base__')())
 
 
 class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
@@ -96,24 +109,10 @@ class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
 
 sequence_flow_builder\
-    .at_work_path('validation')\
-        .add_node(_SequenceValidateBaseClassesClassNode)\
     .at_work_path('extraction')\
         .add_node(_SequenceExtractBaseTypeNode)\
     .at_work_path('')\
         .add_node(_SequenceStoreFinalDefinitionNode)
-
-
-class int8_sequence(int8, metaclass=sequence):
-    pass
-
-
-class int4_sequence(int4, metaclass=sequence):
-    pass
-
-
-class int2_sequence(int2, metaclass=sequence):
-    pass
 
 
 class max_value:
@@ -121,12 +120,12 @@ class max_value:
         self._max_value = max_value
 
     def __call__(self, wrapped) -> type:
-        if not isinstance(wrapped, sequence):
+        if not issubclass(wrapped, sequence):
             raise TypeError('Decorated class must be a sequence subclass')
         definition = getattr(wrapped, '__pg_definition')()
         assert 'max_value' in definition
         assert definition['max_value'] is None
-        definition['max_value'] = wrapped(self._max_value)
+        definition['max_value'] = wrapped.__seq_base__()(self._max_value)
         return wrapped
 
 
@@ -135,12 +134,12 @@ class min_value:
         self._min_value = min_value
 
     def __call__(self, wrapped) -> type:
-        if not isinstance(wrapped, sequence):
+        if not issubclass(wrapped, sequence):
             raise TypeError('Decorated class must be a sequence subclass')
         definition = getattr(wrapped, '__pg_definition')()
         assert 'min_value' in definition
         assert definition['min_value'] is None
-        definition['min_value'] = wrapped(self._min_value)
+        definition['min_value'] = wrapped.__seq_base__()(self._min_value)
         return wrapped
 
 
@@ -149,10 +148,15 @@ class increment:
         self._increment = increment
 
     def __call__(self, wrapped) -> type:
-        if not isinstance(wrapped, sequence):
+        if not issubclass(wrapped, sequence):
             raise TypeError('Decorated class must be a sequence subclass')
         definition = getattr(wrapped, '__pg_definition')()
         assert 'increment' in definition
         assert definition['increment'] is None
-        definition['increment'] = wrapped(self._increment)
+        definition['increment'] = wrapped.__seq_base__()(self._increment)
         return wrapped
+
+
+@dataclass
+class nextval:
+    seq: sequence
