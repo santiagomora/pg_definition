@@ -455,28 +455,28 @@ class PermissionBuilder(list[Any], Builder):
         self.permission = permission
 
     def table(self, table: type) -> 'TableBuilder':
-        definition: dict[str, Any] = getattr(table, '__pg_definition')()
-        parent: Schema = Schema(definition['schema'].__name__, None, getattr(definition['schema'], '__pg_definition')())
+        definition: dict[str, Any] = table._postgres_definition
+        parent: Schema = Schema(definition['schema'].__name__, None, definition['schema']._postgres_definition)
         return TableBuilder(
             self, self.permission, Table(table.__name__, parent, definition)
         )
 
     def sequence(self, sequence: type) -> 'SequenceBuilder':
-        definition: dict[str, Any] = getattr(sequence, '__pg_definition')()
-        parent: Schema = Schema(definition['schema'].__name__, None, getattr(definition['schema'], '__pg_definition')())
+        definition: dict[str, Any] = sequence._postgres_definition
+        parent: Schema = Schema(definition['schema'].__name__, None, definition['schema']._postgres_definition)
         return SequenceBuilder(
             self, self.permission, Sequence(sequence.__name__, parent, definition)
         )
 
     def function(self, function: type) -> 'FunctionBuilder':
-        definition: dict[str, Any] = getattr(function, '__pg_definition')()
-        parent: Schema = Schema(definition['schema'].__name__, None, getattr(definition['schema'], '__pg_definition')())
+        definition: dict[str, Any] = function._postgres_definition
+        parent: Schema = Schema(definition['schema'].__name__, None, definition['schema']._postgres_definition)
         return FunctionBuilder(
             self, self.permission, Function(function.__name__, parent, definition)
         )
 
     def schema(self, schema: type) -> 'SchemaBuilder':
-        definition: dict[str, Any] = getattr(schema, '__pg_definition')()
+        definition: dict[str, Any] = schema._postgres_definition
         return SchemaBuilder(
             self, self.permission, Schema(schema.__name__, None, definition)
         )
@@ -519,5 +519,5 @@ class RoleBuilder(list[Any], Builder):
 
 
 def builder(permission: type) -> Builder:
-    perm: Permission = Permission(permission.__name__, None, getattr(permission, '__pg_definition')())
+    perm: Permission = Permission(permission.__name__, None, permission._postgres_definition)
     return RoleBuilder(perm) if perm.definition['kind'] == 'role' else PermissionBuilder(perm)

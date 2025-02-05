@@ -6,22 +6,21 @@ from typing import\
     Any
 from dataclasses import\
     dataclass
-import test_app.backend as ta
+from test_app.backend import test_app as ta
 import test_app.backend.cpp.wrapper as tw
 
 
 def test_table_definition_is_correctly_formed() -> None:
 
     class with_timestamps(tw.with_timestamps, metaclass=pg.table):
-        created_at: pg.timestamptz
-        updated_at: pg.timestamptz
+        pass
 
-    assert hasattr(with_timestamps, '__pg_definition')
-    definition: dict[str, Any] = with_timestamps.__pg_definition()
+    assert hasattr(with_timestamps, '_postgres_definition')
+    definition: dict[str, Any] = with_timestamps._postgres_definition
     assert 'type' in definition
     assert definition['type'] == with_timestamps
     assert 'bases' in definition
-    assert definition['bases'] is None
+    assert definition['bases'] == tuple()
     assert 'comment' in definition
     assert definition['comment'] is None
     assert 'columns' in definition
@@ -36,26 +35,26 @@ def test_table_definition_is_correctly_formed() -> None:
     assert 'indexes' in definition
     assert definition['indexes'] == {}
 
-    @pg.add_comment('test comment')
+    @pg.table.add_comment(value='test comment')
+    @pg.table.add_column_comment(column='created_at', value='test comment')
     class test2(tw.with_timestamps, metaclass=pg.table):
-        created_at: Annotated[pg.timestamptz, pg.comment('field 2 test comment')]
-        updated_at: pg.timestamptz
+        pass
 
-    assert hasattr(test2, '__pg_definition')
-    definition: dict[str, Any] = test2.__pg_definition()
+    assert hasattr(test2, '_postgres_definition')
+    definition: dict[str, Any] = test2._postgres_definition
     assert 'type' in definition
     assert definition['type'] == test2
     assert 'bases' in definition
-    assert definition['bases'] is None
+    assert definition['bases'] == tuple()
     assert 'comment' in definition
     assert definition['comment'].value == 'test comment'
     assert 'columns' in definition
     assert any([col['name'] == 'created_at' for col in definition['columns'].values()])
     assert any([col['name'] == 'updated_at' for col in definition['columns'].values()])
     assert all([col['type'] == pg.timestamptz for col in definition['columns'].values()])
-    assert any([col['comment'] == pg.comment('field 2 test comment') for col in definition['columns'].values()])
+    assert definition['columns']['created_at']['comment'].value == 'test comment'
     assert 'primary_key' in definition
-    assert definition['primary_key']  is None
+    assert definition['primary_key'] is None
     assert 'foreign_keys' in definition
     assert definition['foreign_keys'] == {}
     assert 'indexes' in definition
@@ -88,305 +87,279 @@ def test_definition_flow_detects_empty_table_definition() -> None:
 #         pass
 
 
-def test_definition_flow_detects_invalid_metadata_types() -> None:
+# def test_definition_flow_detects_invalid_metadata_types() -> None:
+#     try:
+#         @dataclass
+#         class test2:
+#             field1: str
+# 
+#         class test1(tw.with_timestamps, metaclass=pg.table):
+#             pass
+#         assert False
+#     except pg.FlowException as e:
+#         error: Optional[pg.NodeException] = e.get_error('table-definition-flow',
+#                                                          'table-validate-restricted-metadata-types-node')
+#         assert error is not None
+#         assert str(error) == "Invalid metadata type <class 'test_table_definition.test_definition_flow_detects_invalid_metadata_types.<locals>.test2'> in created_at declaration"
+
+
+def test_foreign_key_definition_correctly_extracted() -> None:
+    # NOTE test that referenced columns types are correctly validated
+    # @pg.table.serial(column='id', sequence=ta.author_id_sequence)
+    @pg.table.primary_key(name='author_pk', columns=('id', ))
+    class author(tw.author, metaclass=pg.table):
+        pass
     try:
-        @dataclass
-        class test2:
-            field1: str
-
-        class test1(tw.with_timestamps, metaclass=pg.table):
-            created_at: Annotated[pg.timestamptz, test2('test')]
-            updated_at: pg.timestamptz
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author,
+            columns=('test', ), referenced_columns=('name', ))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
         assert False
-    except pg.FlowException as e:
-        error: Optional[pg.NodeException] = e.get_error('table-definition-flow',
-                                                         'table-validate-restricted-metadata-types-node')
-        assert error is not None
-        assert str(error) == "Invalid metadata type <class 'test_table_definition.test_definition_flow_detects_invalid_metadata_types.<locals>.test2'> in created_at declaration"
-
-# 
-# def test_foreign_key_definition_correctly_extracted() -> None:
-#     # NOTE test that referenced columns types are correctly validated
-#     try:
-#         @pg.primary_key(name='test2', columns=('field1',))
-#         class test2(pg.table):
-#             field1: pg.int4
-# 
-#         @pg.foreign_key(name='test2', references=test2, columns=('field',),
-#                         referenced_columns=('field1', ))
-#         class test1(pg.table):
-#             field: pg.int2
-#     except TypeError as e:
-#         assert str(e) == "Foreign key column \"field\" type must match with \"field1\" in <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test2'> definition"
-# 
-#     try:
-#         @pg.primary_key(name='test', columns=('field3', ))
-#         class test2(pg.table):
-#             field3: pg.int4
-# 
-#         @pg.foreign_key(name='test2', references=test2, columns=('field', ),
-#                         referenced_columns=('field1', ))
-#         class test1(pg.table):
-#             field: pg.int2
-#     except TypeError as e:
-#         assert str(e) == "Foreign key column \"field1\" must exist in <class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test2'> definition"
-# 
-#     # NOTE test that foreign keys are not inherited
-#     @pg.primary_key(name='test', columns=('field1', ))
-#     class test1(pg.table):
-#         field1: pg.int2
-# 
-#     @pg.foreign_key(name='test2', references=test1, columns=('field', ),
-#                     referenced_columns=('field1', ))
-#     class test2(pg.table):
-#         field: pg.int2
-# 
-#     class test3(test2):
-#         pass
-# 
-#     def2 = test2.__pg_definition()
-#     def3 = test3.__pg_definition()
-# 
-#     assert def2['foreign_keys'] is not None
-#     assert len(def2['foreign_keys']) == 1
-# 
-#     assert def2['foreign_keys']['test2']['references'] == test1
-#     assert def2['foreign_keys']['test2']['on_update'] == pg.foreign_key_action.NO_ACTION
-#     assert def2['foreign_keys']['test2']['on_delete'] == pg.foreign_key_action.NO_ACTION
-#     assert def2['foreign_keys']['test2']['name'] == 'test2'
-# 
-#     assert def3['foreign_keys'] == {}
-# 
-#     # NOTE test that final definition contains expected data
-#     # NOTE test that foreign keys are correctly grouped by name in final definition
-#     @pg.primary_key(name='test', columns=('t4_field1', 't4_field2'))
-#     class test4(pg.table):
-#         t4_field1: pg.int2
-#         t4_field2: pg.text
-# 
-#     @pg.foreign_key(name='test2', references=test4, columns=('t5_field1', 't5_field2'),
-#                     referenced_columns=('t4_field1', 't4_field2'))
-#     class test5(pg.table):
-#         t5_field1: pg.int2
-#         t5_field2: pg.text
-# 
-#     def5 = test5.__pg_definition()
-#     assert def5['foreign_keys']['test2']['references'] == test4
-#     assert def5['foreign_keys']['test2']['on_update'] == pg.foreign_key_action.NO_ACTION
-#     assert def5['foreign_keys']['test2']['on_delete'] == pg.foreign_key_action.NO_ACTION
-#     assert def5['foreign_keys']['test2']['name'] == 'test2'
-# 
-#     # NOTE test that validates that all fields pointed by foreign keys participate in unique index or primary key
-#     try:
-#         @pg.primary_key(name='test2', columns=('t6_field2',))
-#         class test6(pg.table):
-#             t6_field1: pg.int2
-#             t6_field2: pg.text
-# 
-#         @pg.foreign_key(name='test2', references=test6, columns=('t7_field1', 't7_field2'),
-#                         referenced_columns=('t6_field1', 't6_field2', ))
-#         class test7(pg.table):
-#             t7_field1: pg.int2
-#             t7_field2: pg.text
-# 
-#         assert False
-#     except TypeError as e:
-#         assert str(e) == "Foreign key \"test2\" error: Other class \"<class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'>\" must define any ('unique_constraints', 'primary_key', 'indexes') constraint over referenced columns ('t6_field1', 't6_field2')"
-# 
-#     try:
-#         class test6(pg.table):
-#             t6_field1: pg.int2
-#             t6_field2: pg.text
-# 
-#         @pg.foreign_key(name='test2', references=test6, columns=('t7_field1', 't7_field2'),
-#                         referenced_columns=('t6_field1', 't6_field2', ))
-#         class test7(pg.table):
-#             t7_field1: pg.int2
-#             t7_field2: pg.text
-#         assert False
-#     except TypeError as e:
-#         assert str(e) == "Foreign key \"test2\" error: Other class \"<class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'>\" must define any ('unique_constraints', 'primary_key', 'indexes') constraint over referenced columns ('t6_field1', 't6_field2')"
-# 
-#     try:
-#         @pg.primary_key(name='test', columns=('t6_field1',))
-#         class test6(pg.table):
-#             t6_field1: pg.int2
-#             t6_field2: pg.text
-# 
-#         @pg.foreign_key(name='test2', references=test6, columns=('t7_field1','t7_field2'),
-#                         referenced_columns=('t6_field1', 't6_field2'))
-#         class test7(pg.table):
-#             t7_field1: pg.int2
-#             t7_field2: pg.text
-#         assert False
-#     except TypeError as e:
-#         assert str(e) == "Foreign key \"test2\" error: Other class \"<class 'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test6'>\" must define any ('unique_constraints', 'primary_key', 'indexes') constraint over referenced columns ('t6_field1', 't6_field2')"
+    except TypeError:
+        pass
+    try:
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author,
+            columns=('author_id', ), referenced_columns=('test', ))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author,
+            columns=('author_id', ), referenced_columns=('name', ))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        class author2(tw.author, metaclass=pg.table):
+            pass
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author2,
+            columns=('author_id', ), referenced_columns=('id', ))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author2,
+            columns=('author_id', 'content', ), referenced_columns=('id', ))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author,
+            columns=('author_id', 'content', ), referenced_columns=('id',))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.primary_key(name='author_pk', columns=('id', 'name'))
+        class author2(tw.author, metaclass=pg.table):
+            pass
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author2,
+            columns=('author_id', 'content', ), referenced_columns=('id', ))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.primary_key(name='author_pk', columns=('id', ))
+        class author2(tw.author, metaclass=pg.table):
+            pass
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author2,
+            columns=('author_id', 'content', ), referenced_columns=('id', 'name'))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.unique_constraint(name='author_pk', columns=('id', 'name'))
+        class author2(tw.author, metaclass=pg.table):
+            pass
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author2,
+            columns=('author_id', 'content', ), referenced_columns=('id', 'name'))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+    except TypeError:
+        assert False
+    try:
+        @pg.table.primary_key(name='author_pk', columns=('id', 'name'))
+        class author2(tw.author, metaclass=pg.table):
+            pass
+        @pg.table.foreign_key(
+            name='authorable_author_fk', references=author2,
+            columns=('author_id', 'content', ), referenced_columns=('id', 'name'))
+        class authored(tw.authored, metaclass=pg.table):
+            pass
+    except TypeError:
+        assert False
+    @pg.table.foreign_key(
+        name='authorable_author_fk', references=author,
+        columns=('author_id', ), referenced_columns=('id', ))
+    class authored(tw.authored, metaclass=pg.table):
+        pass
+    definition = authored._postgres_definition
+    assert definition['foreign_keys']['authorable_author_fk']['references'] == author
+    assert definition['foreign_keys']['authorable_author_fk']['on_update'] == pg.table.foreign_key_action.NO_ACTION
+    assert definition['foreign_keys']['authorable_author_fk']['on_delete'] == pg.table.foreign_key_action.NO_ACTION
+    assert definition['foreign_keys']['authorable_author_fk']['name'] == 'authorable_author_fk'
 
 
-# def test_primary_key_definition_correctly_extracted() -> None:
-#     # NOTE test that there can only be one primary key in the definition
-#     try:
-#         @pg.primary_key(name='test1', columns=('t1_field1',))
-#         @pg.primary_key(name='test', columns=('t1_field2',))
-#         class test1(pg.table):
-#             t1_field1: pg.int2
-#             t1_field2: pg.int2
-#         assert False
-#     except AssertionError:
-#         pass
-# 
-#     # NOTE test that primary keys are not inherited
-#     @pg.primary_key(name='test', columns=('t1_field1', 't1_field2', ))
-#     class test1(pg.table):
-#         t1_field1: pg.int2
-#         t1_field2: pg.int2
-# 
-#     class test2(test1):
-#         pass
-# 
-#     assert hasattr(test2, '__pg_definition')
-#     def2 = getattr(test2, '__pg_definition')()
-#     assert 'primary_key' in def2
-#     assert def2['primary_key'] is None
-# 
-#     # NOTE test primary key is correctly grouped by name in final definition
-#     # NOTE test that primary key final definition is correct
-#     assert hasattr(test1, '__pg_definition')
-#     def1 = getattr(test1, '__pg_definition')()
-#     assert 'primary_key' in def1
-#     assert def1['primary_key']['name'] == 'test'
-#     assert def1['primary_key']['columns'] == ('t1_field1', 't1_field2')
-# 
-# 
-# def test_index_definition_correctly_extracted() -> None:
-#     # NOTE test index is correctly grouped by name in final definition
-#     @pg.index(name='test', columns=('t1_field1', 't1_field2', ))
-#     class test1(pg.table):
-#         t1_field1: pg.int2
-#         t1_field2: pg.int2
-# 
-#     assert hasattr(test1, '__pg_definition')
-#     def1 = getattr(test1, '__pg_definition')()
-#     assert 'indexes' in def1
-#     assert len(def1['indexes']) == 1
-#     assert def1['indexes']['test']['columns'] == ('t1_field1', 't1_field2')
-#     assert def1['indexes']['test']['type'] == pg.index_type.BTREE
-#     assert def1['indexes']['test']['name'] == 'test'
-# 
-#     # NOTE test that columns can appear in several indexes
-#     @pg.index(name='test', columns=('t2_field1', 't2_field2', ))
-#     @pg.index(name='test1', columns=('t2_field1', 't2_field3', ))
-#     class test2(pg.table):
-#         t2_field1: pg.int2
-#         t2_field2: pg.int2
-#         t2_field3: pg.int2
-# 
-#     assert hasattr(test2, '__pg_definition')
-#     def2 = getattr(test2, '__pg_definition')()
-#     assert 'indexes' in def2
-#     assert len(def2['indexes']) == 2
-#     print(def2['indexes'])
-#     assert any([ix['columns'] == ('t2_field1', 't2_field2') for ix in def2['indexes'].values()])
-#     assert any([ix['columns'] == ('t2_field1', 't2_field3') for ix in def2['indexes'].values()])
-#     assert any([ix['name'] == 'test' for ix in def2['indexes'].values()])
-#     assert any([ix['name'] == 'test1' for ix in def2['indexes'].values()])
-#     assert all([ix['type'] == pg.index_type.BTREE for ix in def2['indexes'].values()])
-# 
-#     # NOTE test that indexes are not inherited
-#     class test3(test2):
-#         pass
-# 
-#     assert hasattr(test3, '__pg_definition')
-#     def3 = getattr(test3, '__pg_definition')()
-#     assert 'indexes' in def3
-#     assert def3['indexes'] == {}
-# 
-#     try:
-#         @pg.index(name='test1', columns=('t2_field1', ))
-#         @pg.index(name='test1', columns=('t2_field1', ))
-#         class test4(pg.table):
-#             t2_field1: pg.int2
-#     except AssertionError:
-#         pass
-# 
-# 
-# def test_unique_constraint_definition_correctly_extracted() -> None:
-#     # NOTE test unique index is correctly grouped by name in final definition
-#     @pg.unique_constraint(name='test', columns=('t1_field1', 't1_field2', ))
-#     class test1(pg.table):
-#         t1_field1: pg.int2
-#         t1_field2: pg.int2
-# 
-#     assert hasattr(test1, '__pg_definition')
-#     def1 = getattr(test1, '__pg_definition')()
-#     assert 'unique_constraints' in def1
-#     assert isinstance(def1['unique_constraints'], dict)
-#     assert def1['unique_constraints']['test']['columns'] == ('t1_field1', 't1_field2')
-#     assert def1['unique_constraints']['test']['name'] == 'test'
-# 
-#     # NOTE test that columns can appear in several indexes
-#     @pg.unique_constraint(name='test', columns=('t2_field1', 't2_field2', ))
-#     @pg.unique_constraint(name='test1', columns=('t2_field2', 't2_field3', ))
-#     class test2(pg.table):
-#         t2_field1: pg.int2
-#         t2_field2: pg.int2
-#         t2_field3: pg.int2
-#     assert hasattr(test2, '__pg_definition')
-#     def2 = getattr(test2, '__pg_definition')()
-#     assert 'unique_constraints' in def2
-#     assert len(def2['unique_constraints']) == 2
-#     assert any([ix['columns'] == ('t2_field1', 't2_field2') for _, ix in def2['unique_constraints'].items()])
-#     assert any([ix['columns'] == ('t2_field2', 't2_field3') for _, ix in def2['unique_constraints'].items()])
-#     assert any([ix['name'] == 'test' for ix in def2['unique_constraints'].values()])
-#     assert any([ix['name'] == 'test1' for ix in def2['unique_constraints'].values()])
-# 
-#     # NOTE test that unique indexes are not inherited
-#     class test3(test2):
-#         pass
-#     assert hasattr(test3, '__pg_definition')
-#     def3 = getattr(test3, '__pg_definition')()
-#     assert 'unique_constraints' in def3
-#     assert def3['unique_constraints'] == {}
-# 
-#     try:
-#         @pg.unique_constraint(name='test', columns=('t2_field1',))
-#         @pg.unique_constraint(name='test', columns=('t2_field1',))
-#         class test4(pg.table):
-#             t2_field1: pg.int2
-#     except AssertionError:
-#         pass
-# 
-# 
-# def test_check_definition_correctly_extracted() -> None:
-#     # NOTE test that pg.check constraints are not inherited
-#     class test0(pg.table):
-#         t0_field1: Annotated[pg.int2,
-#                              pg.check(name='test', predicate=pg.this() > pg.literal(0))]
-#     class test1(pg.table):
-#         t1_field1: Annotated[pg.int2,
-#                              pg.check(name='test', predicate=pg.this() < pg.literal(10))]
-# 
-#     class test2(test0, test1):
-#         pass
-# 
-#     # test0
-#     assert hasattr(test0, '__pg_definition')
-#     def0 = getattr(test0, '__pg_definition')()
-#     assert 'columns' in def0
-#     assert isinstance(def0['columns'] , dict)
-#     assert def0['columns']['t0_field1']['name'] == 't0_field1'
-#     assert def0['columns']['t0_field1']['type'] == pg.int2
-#     assert def0['columns']['t0_field1']['comment'] is None
-#     assert 'check' in def0
-#     assert isinstance(def0['check'], dict)
-#     assert 'test0_test' in def0['check']
-#     assert def0['check']['test0_test'].name == 'test0_test'
-#     assert str(def0['check']['test0_test']) == '(t0_field1 > 0)'
-#     assert 'base_classes' in def0
-#     assert def0['base_classes'] is None
+def test_primary_key_definition_correctly_extracted() -> None:
+    # NOTE test that there can only be one primary key in the definition
+    try:
+        @pg.table.primary_key(name='author_pk', columns=('id', ))
+        @pg.table.primary_key(name='author_pk', columns=('id', ))
+        class author(tw.author, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.primary_key(name='author_pk', columns=('test', ))
+        class author(tw.author, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+
+    @pg.table.primary_key(name='author_pk', columns=('id', 'name',))
+    class author(tw.author, metaclass=pg.table):
+        pass
+
+    # NOTE test primary key is correctly grouped by name in final definition
+    # NOTE test that primary key final definition is correct
+    assert hasattr(author, '_postgres_definition')
+    def1 = author._postgres_definition
+    assert 'primary_key' in def1
+    assert def1['primary_key']['name'] == 'author_pk'
+    assert def1['primary_key']['columns'] == ('id', 'name',)
+
+
+def test_index_definition_correctly_extracted() -> None:
+    try:
+        @pg.table.index(name='test1', columns=('id', ))
+        @pg.table.index(name='test1', columns=('id', ))
+        class author(tw.author, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    try:
+        @pg.table.index(name='test1', columns=('test', ))
+        class author(tw.author, metaclass=pg.table):
+            pass
+        assert False
+    except TypeError:
+        pass
+    # NOTE test index is correctly grouped by name in final definition
+    @pg.table.index(name='author_ix', columns=('id', 'name',))
+    class author(tw.author, metaclass=pg.table):
+        pass
+
+    assert hasattr(author, '_postgres_definition')
+    def1 = author._postgres_definition
+    assert 'indexes' in def1
+    assert len(def1['indexes']) == 1
+    assert def1['indexes']['author_ix']['columns'] == ('id', 'name')
+    assert def1['indexes']['author_ix']['type'] == pg.table.index_type.BTREE
+    assert def1['indexes']['author_ix']['name'] == 'author_ix'
+
+    # NOTE test that columns can appear in several indexes
+    @pg.table.index(name='test', columns=('id', 'name',))
+    @pg.table.index(name='test1', columns=('id', ), index_type=pg.table.index_type.BRIN)
+    class author2(tw.author, metaclass=pg.table):
+        pass
+
+    assert hasattr(author2, '_postgres_definition')
+    def2 = author2._postgres_definition
+    assert 'indexes' in def2
+    assert len(def2['indexes']) == 2
+    assert 'test' in def2['indexes']
+    assert def2['indexes']['test']['columns'] == ('id', 'name')
+    assert def2['indexes']['test']['type'] == pg.table.index_type.BTREE
+    assert def2['indexes']['test']['name'] == 'test'
+    assert 'test1' in def2['indexes']
+    assert def2['indexes']['test1']['columns'] == ('id', )
+    assert def2['indexes']['test1']['type'] == pg.table.index_type.BRIN
+    assert def2['indexes']['test1']['name'] == 'test1'
+
+
+def test_unique_constraint_definition_correctly_extracted() -> None:
+    try:
+        @pg.table.unique_constraint(name='test', columns=('id',))
+        @pg.table.unique_constraint(name='test', columns=('id',))
+        class author(tw.author, metaclass=pg.table):
+            pass
+    except TypeError:
+        pass
+
+    # NOTE test unique index is correctly grouped by name in final definition
+    @pg.table.unique_constraint(name='test', columns=('id', 'name',))
+    class author2(tw.author, metaclass=pg.table):
+        pass
+
+    assert hasattr(author2, '_postgres_definition')
+    def1 = author2._postgres_definition
+    assert 'unique_constraints' in def1
+    assert isinstance(def1['unique_constraints'], dict)
+    assert def1['unique_constraints']['test']['columns'] == ('id', 'name',)
+    assert def1['unique_constraints']['test']['name'] == 'test'
+
+    # NOTE test that columns can appear in several indexes
+    @pg.table.unique_constraint(name='test', columns=('id', 'name',))
+    @pg.table.unique_constraint(name='test1', columns=('id',))
+    class author3(tw.author, metaclass=pg.table):
+        pass
+    assert hasattr(author3, '_postgres_definition')
+    def2 = author3._postgres_definition
+    assert 'unique_constraints' in def2
+    assert len(def2['unique_constraints']) == 2
+    assert 'test' in def2['unique_constraints']
+    assert def2['unique_constraints']['test']['columns'] == ('id', 'name')
+    assert def2['unique_constraints']['test']['name'] == 'test'
+    assert 'test1' in def2['unique_constraints']
+    assert def2['unique_constraints']['test1']['columns'] == ('id', )
+    assert def2['unique_constraints']['test1']['name'] == 'test1'
+
+
+def test_check_definition_correctly_extracted() -> None:
+    # NOTE test that pg.check constraints are not inherited
+    @pg.table.set_check_constraint(
+        column='author_id', name='test', constraint=pg.this() > pg.literal(0))
+    class authored(tw.authored, metaclass=pg.table):
+        pass
+
+    @pg.table.set_check_constraint(
+        column='author_id', name='test', constraint=pg.this() < pg.literal(10))
+    class post(tw.post, metaclass=pg.table):
+        pass
+
+    assert hasattr(post, '_postgres_definition')
+    def0 = post._postgres_definition
+    assert 'columns' in def0
+    assert str(def0['columns']['author_id']['check']) == 'author_id < 10'
 #     # test1
-#     assert hasattr(test1, '__pg_definition')
-#     def1 = getattr(test1, '__pg_definition')()
+#     assert hasattr(test1, '_postgres_definition')
+#     def1 = test1._postgres_definition
 #     assert 'columns' in def1
 #     assert isinstance(def1['columns'] , dict)
 #     assert len(def1['columns']) == 1
@@ -398,15 +371,15 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
 #     assert 'test1_test' in def1['check']
 #     assert def1['check']['test1_test'].name == 'test1_test'
 #     assert str(def1['check']['test1_test']) == '(t1_field1 < 10)'
-#     assert 'base_classes' in def1
-#     assert def1['base_classes'] is None
+#     assert 'bases' in def1
+#     assert def1['bases'] is None
 #     # test2
-#     assert hasattr(test2, '__pg_definition')
-#     def2 = getattr(test2, '__pg_definition')()
+#     assert hasattr(test2, '_postgres_definition')
+#     def2 = test2._postgres_definition
 #     assert 'columns' in def2
 #     assert def2['columns'] == {}
-#     assert 'base_classes' in def2
-#     assert def2['base_classes'] == (test0, test1, )
+#     assert 'bases' in def2
+#     assert def2['bases'] == (test0, test1, )
 #     # NOTE test that pg.check constraints are applied when instancing class
 #     # NOTE test that parent pg.check constraints are applied when instancing class
 #     try:
@@ -519,73 +492,59 @@ def test_definition_flow_detects_invalid_metadata_types() -> None:
 #                                                          'table-validate-same-type-meta-instances-have-different-names-node')
 #         assert error is not None
 #         assert str(error) == 'Metadata definition error in t2_field1: found 2 repeated instances of same type check sharing name test.'
-# 
-# 
-# def test_default_values_correctly_extracted() -> None:
-#     # NOTE test that default values are present in final column definition
-#     class test0(pg.table):
-#         t0_field1: pg.int2 = 1
-#     # test0
-#     assert hasattr(test0, '__pg_definition')
-#     def0 = getattr(test0, '__pg_definition')()
-#     assert 'columns' in def0
-#     assert isinstance(def0['columns'], dict)
-#     assert 'default' in def0['columns']['t0_field1']
-#     assert isinstance(def0['columns']['t0_field1']['default'], pg.int2)
-#     assert def0['columns']['t0_field1']['default'] == 1
-# 
-#     class test_seq(pg.int2_sequence):
-#         pass
-# 
-#     @pg.serial(column='t0_field1', sequence=test_seq)
-#     class test1(pg.table):
-#         t0_field1: pg.int2
-# 
-# 
-#     assert hasattr(test1, '__pg_definition')
-#     def1 = getattr(test1, '__pg_definition')()
-#     assert 'columns' in def1
-#     assert isinstance(def1['columns'], dict)
-#     assert 'default' in def1['columns']['t0_field1']
-#     assert isinstance(def1['columns']['t0_field1']['default'], pg.nextval)
-# 
-# 
-# def test_comments_correctly_extracted() -> None:
-#     # NOTE test that pg.comment are present in final definition
-#     # NOTE test that pg.comments are not inherited from parent classes
-#     @pg.add_comment('table test comment')
-#     class test0(pg.table):
-#         t0_field1: Annotated[pg.int2,
-#                              pg.comment('test comment')]
-#     # test0
-#     assert hasattr(test0, '__pg_definition')
-#     def0 = getattr(test0, '__pg_definition')()
-#     assert 'columns' in def0
-#     assert isinstance(def0['columns'], dict)
-#     assert 'comment' in def0['columns']['t0_field1']
-#     assert isinstance(def0['columns']['t0_field1']['comment'], pg.comment)
-#     assert def0['columns']['t0_field1']['comment'].value == 'test comment'
-#     assert 'default' not in def0['columns']['t0_field1']
-#     assert 'comment' in def0
-#     assert isinstance(def0['comment'], pg.comment)
-#     assert def0['comment'].value == 'table test comment'
-# 
-# 
-# def test_default_values() -> None:
-#     class domain2(pg.int2):
-#         pass
-# 
-#     @pg.add_comment('table test comment')
-#     class test0(pg.table):
-#         t0_field1: pg.int2
-#         t0_field2: domain2 = pg.literal(21) + pg.field('t0_field1')
-#         t0_field3: pg.int2 = 34
-# 
-#     print(pg.bool(False))
-# 
-#     test = test0(t0_field1=1)
-#     assert test.t0_field1 == 1
-#     assert test.t0_field2 == 22
-#     assert test.t0_field3 == 34
-# 
-# test_default_values()
+
+
+def test_comments_correctly_extracted() -> None:
+    # NOTE test that pg.comment are present in final definition
+    @pg.table.add_column_comment(column='id', value='test comment')
+    @pg.table.add_comment(value='table test comment')
+    class author(tw.author, metaclass=pg.table):
+        pass
+    assert hasattr(author, '_postgres_definition')
+    def0 = author._postgres_definition
+    assert 'columns' in def0
+    assert isinstance(def0['columns'], dict)
+    assert 'comment' in def0['columns']['id']
+    assert hasattr(def0['columns']['id']['comment'], 'value')
+    assert def0['columns']['id']['comment'].value == 'test comment'
+    assert 'default' in def0['columns']['id']
+    assert def0['columns']['id']['default'] is pg.Undefined
+    assert 'comment' in def0
+    assert hasattr(def0['comment'], 'value')
+    assert def0['comment'].value == 'table test comment'
+
+
+def test_default_values() -> None:
+    @pg.table.set_default(column='name', default='table test comment')
+    @pg.table.set_default(column='id', default=1)
+    class author(tw.author, metaclass=pg.table):
+        pass
+    a = author()
+    assert a.id == 1
+    assert a.name == 'table test comment'
+
+    assert hasattr(author, '_postgres_definition')
+    def0 = author._postgres_definition
+    assert 'columns' in def0
+    assert isinstance(def0['columns'], dict)
+    assert 'default' in def0['columns']['id']
+    assert isinstance(def0['columns']['id']['default']._lit, pg.int8)
+    assert def0['columns']['id']['default']._lit == 1
+    assert 'default' in def0['columns']['name']
+    assert isinstance(def0['columns']['name']['default']._lit, pg.text)
+    assert def0['columns']['name']['default']._lit == 'table test comment'
+
+    class test_seq(pg.sequence, base=pg.int8):
+        pass
+
+    @pg.table.serial(column='id', sequence=test_seq)
+    class test1(tw.author, metaclass=pg.table):
+        pass
+
+    assert hasattr(test1, '_postgres_definition')
+    def1 = test1._postgres_definition
+    assert 'columns' in def1
+    assert isinstance(def1['columns'], dict)
+    assert 'default' in def1['columns']['id']
+    assert isinstance(def1['columns']['id']['default'], pg.sequence.nextval)
+

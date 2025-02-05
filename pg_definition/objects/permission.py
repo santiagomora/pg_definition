@@ -4,7 +4,6 @@ from typing import\
     Generic
 from typing import\
     Type
-import pg_definition.types as pt
 from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
@@ -20,13 +19,21 @@ from .schema import\
     schema
 from .sequence import\
     sequence
-from ..types.table import\
+from ..metaclasses.table import\
     table
-# from ..types.function import\
-#     function
+from ..metaclasses.builtin import\
+    builtin
+from ..metaclasses.composite import\
+    composite
+from ..metaclasses.enums import\
+    enum
+from .function import\
+    function
+from .comment import\
+    add_comment
 
 
-__all__ = ['permission', 'grant']
+__all__ = ['permission']
 
 
 _permission_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('permission-definition-flow')
@@ -46,20 +53,16 @@ class _permission(type):
         return rettype
 
 
-class permission(metaclass=_permission):
-    pass
-
-
-T = TypeVar('T', table, sequence, schema) #, function)
+T = TypeVar('T', table, sequence, schema, function)
 
 
 class _Grant(Generic[T]):
     def __init__(self, tp: Type[T]):
-        self.tp_def = getattr(tp, '__pg_definition')()
+        self.tp_def = tp._postgres_definition
 
-    def __call__(self, target: Type[permission]):
+    def __call__(self, target: Type[_permission]):
         assert issubclass(target, permission)
-        definition: dict[str, Any] = getattr(target, '__pg_definition')()
+        definition: dict[str, Any] = target._postgres_definition
         assert 'type_grants' in definition
         assert definition['kind'] == 'permission'
         self.store_definition(definition)
@@ -72,82 +75,86 @@ class _Grant(Generic[T]):
         grants[self.tp_def['type']]['grants'][self.__class__.__name__] = True
 
 
-class grant:
-    class table:
-        class select(_Grant[table]):
-            def __init__(self, tp: Type[table]):
-                _Grant.__init__(self, tp)
-                assert isinstance(tp, table)
+class permission(metaclass=_permission):
+    class add_comment(add_comment):
+        pass
 
-        class insert(_Grant[table]):
-            def __init__(self, tp: Type[table]):
-                _Grant.__init__(self, tp)
-                assert isinstance(tp, table)
+    class grant:
+        class table:
+            class select(_Grant[table]):
+                def __init__(self, tp: Type[table]):
+                    _Grant.__init__(self, tp)
+                    assert isinstance(tp, table)
 
-        class update(_Grant[table]):
-            def __init__(self, tp: Type[table]):
-                _Grant.__init__(self, tp)
-                assert isinstance(tp, table)
+            class insert(_Grant[table]):
+                def __init__(self, tp: Type[table]):
+                    _Grant.__init__(self, tp)
+                    assert isinstance(tp, table)
 
-        class delete(_Grant[table]):
-            def __init__(self, tp: Type[table]):
-                _Grant.__init__(self, tp)
-                assert isinstance(tp, table)
+            class update(_Grant[table]):
+                def __init__(self, tp: Type[table]):
+                    _Grant.__init__(self, tp)
+                    assert isinstance(tp, table)
 
-        class truncate(_Grant[table]):
-            def __init__(self, tp: Type[table]):
-                _Grant.__init__(self, tp)
-                assert isinstance(tp, table)
+            class delete(_Grant[table]):
+                def __init__(self, tp: Type[table]):
+                    _Grant.__init__(self, tp)
+                    assert isinstance(tp, table)
 
-        class references(_Grant[table]):
-            def __init__(self, tp: Type[table], columns: tuple[str]) -> None:
-                _Grant.__init__(self, tp)
-                assert isinstance(tp, table)
-                assert len(columns) > 0
-                self.columns = columns
+            class truncate(_Grant[table]):
+                def __init__(self, tp: Type[table]):
+                    _Grant.__init__(self, tp)
+                    assert isinstance(tp, table)
 
-            def store_definition(self, definition: dict[str, Any]) -> None:
-                super().store_definition(definition)
-                definition['type_grants'][self.tp_def['type']]['grants'][self.__class__.__name__] = self.columns
+            class references(_Grant[table]):
+                def __init__(self, tp: Type[table], columns: tuple[str]) -> None:
+                    _Grant.__init__(self, tp)
+                    assert isinstance(tp, table)
+                    assert len(columns) > 0
+                    self.columns = columns
 
-    class schema:
-        class usage(_Grant[schema]):
-            def __init__(self, tp: Type[schema]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, schema)
+                def store_definition(self, definition: dict[str, Any]) -> None:
+                    super().store_definition(definition)
+                    definition['type_grants'][self.tp_def['type']]['grants'][self.__class__.__name__] = self.columns
 
-        class create(_Grant[schema]):
-            def __init__(self, tp: Type[schema]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, schema)
+        class schema:
+            class usage(_Grant[schema]):
+                def __init__(self, tp: Type[schema]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, schema)
 
-    class sequence:
-        class usage(_Grant[sequence]):
-            def __init__(self, tp: Type[sequence]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, sequence)
+            class create(_Grant[schema]):
+                def __init__(self, tp: Type[schema]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, schema)
 
-        class select(_Grant[sequence]):
-            def __init__(self, tp: Type[sequence]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, sequence)
+        class sequence:
+            class usage(_Grant[sequence]):
+                def __init__(self, tp: Type[sequence]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, sequence)
 
-        class update(_Grant[sequence]):
-            def __init__(self, tp: Type[sequence]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, sequence)
+            class select(_Grant[sequence]):
+                def __init__(self, tp: Type[sequence]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, sequence)
 
-    # class function:
-    #     class execute(_Grant[function]):
-    #         def __init__(self, tp: Type[function]):
-    #             _Grant.__init__(self, tp)
-    #             assert issubclass(tp, function)
+            class update(_Grant[sequence]):
+                def __init__(self, tp: Type[sequence]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, sequence)
 
-    class type:
-        class usage(_Grant[sequence]):
-            def __init__(self, tp: Type[sequence]):
-                _Grant.__init__(self, tp)
-                assert issubclass(tp, pt.composite) or issubclass(tp, pt.enum) or isinstance(tp, pt.builtin)
+        class function:
+            class execute(_Grant[function]):
+                def __init__(self, tp: Type[function]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, function)
+
+        class type:
+            class usage(_Grant[sequence]):
+                def __init__(self, tp: Type[sequence]):
+                    _Grant.__init__(self, tp)
+                    assert issubclass(tp, composite) or issubclass(tp, enum) or isinstance(tp, builtin)
 
 
 class _PermissionDetermineIfTargetIsRoleNode(CommonDetermineIfObjectIsDomainNode):
@@ -219,7 +226,7 @@ class _RoleValidateBaseClassesNode(SingleChoiceDefinitionFlowNode):
             if base_class is permission:
                 errors.append(f'Role cant have {base_class} as a base class')
                 continue
-            base_definition: dict[str, Any] = getattr(base_class, '__pg_definition')()
+            base_definition: dict[str, Any] = base_class._postgres_definition
             if base_definition['kind'] == 'role':
                 errors.append(f'Base class {base_class} must be a permission, not a role')
                 continue

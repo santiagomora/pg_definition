@@ -11,9 +11,8 @@ def test_enums_definition_flow_executes_correctly() -> None:
     # NOTE: test that definitions get correctly extracted
     class test0(tw.post_status, metaclass=pg.enum):
         pass
-
-    assert hasattr(test0, '__pg_definition')
-    def0 = getattr(test0, '__pg_definition')()
+    assert hasattr(test0, '_postgres_definition')
+    def0 = test0._postgres_definition
     assert 'type' in def0
     assert def0['type'] == test0
     assert 'comment' in def0
@@ -21,7 +20,7 @@ def test_enums_definition_flow_executes_correctly() -> None:
     assert 'members' in def0
     assert isinstance(def0['members'], dict)
     for memb in def0['members']:
-        assert test0.__members__[memb.name].value == def0['members'][memb]
+        assert test0.enum.__members__[memb.name].value == def0['members'][memb]
 
     # NOTE: test that members are string
     # try:
@@ -48,11 +47,12 @@ def test_enums_domain_definition_flow_executes_correctly() -> None:
     class test0(tw.post_status, metaclass=pg.enum):
         pass
 
-    class test1(test0, default=pg.literal(test0.published)):
-        FIELD1 = 1
+    @pg.enum.set_default(test0.enum.published)
+    class test1(test0):
+        pass
 
-    assert hasattr(test1, '__pg_definition')
-    def1 = getattr(test1, '__pg_definition')()
+    assert hasattr(test1, '_postgres_definition')
+    def1 = test1._postgres_definition
     assert 'type' in def1
     assert def1['type'] == test1
     assert 'base_type' in def1
@@ -61,67 +61,64 @@ def test_enums_domain_definition_flow_executes_correctly() -> None:
     assert def1['comment'] is None
     assert 'default' in def1
     assert isinstance(def1['default'], pg.literal)
-    assert def1['default']._lit == test0.published
+    assert str(def1['default']._lit) == 'published'
 
 
 def test_comments_correctly_added_to_enums_definition() -> None:
-    @pg.add_comment('test comment')
+    @pg.enum.add_comment(value='test comment')
     class test0(tw.post_status, metaclass=pg.enum):
         pass
 
-    assert hasattr(test0, '__pg_definition')
-    def0 = getattr(test0, '__pg_definition')()
+    assert hasattr(test0, '_postgres_definition')
+    def0 = test0._postgres_definition
     assert 'comment' in def0
-    assert def0['comment'] == pg.comment('test comment')
+    assert def0['comment'].value == 'test comment'
 
     class test1(test0):
         pass
 
-    assert hasattr(test1, '__pg_definition')
-    def1 = getattr(test1, '__pg_definition')()
+    assert hasattr(test1, '_postgres_definition')
+    def1 = test1._postgres_definition
     assert 'comment' in def1
     assert def1['comment'] is None
 
-    @pg.add_comment('test comment')
+    @pg.enum.add_comment(value='test comment')
     class test2(test1):
         pass
 
-    assert hasattr(test2, '__pg_definition')
-    def2 = getattr(test2, '__pg_definition')()
+    assert hasattr(test2, '_postgres_definition')
+    def2 = test2._postgres_definition
     assert 'comment' in def2
-    assert def2['comment'] == pg.comment('test comment')
+    assert def2['comment'].value == 'test comment'
 
 
-# def test_default_value_to_enums_definition() -> None:
-#     try:
-#         @pg.default_value('test comment')
-#         class test0(pg.enums):
-#             FIELD1 = auto()
-#         assert False
-#     except KeyError as e:
-#         assert str(e) == "'default'"
-# 
-#     class test1(pg.enums):
-#         FIELD1 = auto()
-# 
-#     @pg.default_value('field1')
-#     class test2(test1):
-#         pass
-# 
-#     assert hasattr(test2, '__pg_definition')
-#     def2 = getattr(test2, '__pg_definition')()
-#     assert 'default' in def2
-#     assert isinstance(def2['default'], pg.literal)
-#     assert def2['default']._lit == test2('field1')
-# 
-#     try:
-#         class test3(pg.enums):
-#             FIELD1 = auto()
-# 
-#         @pg.default_value('test')
-#         class test4(test3):
-#             pass
-#         assert False
-#     except ValueError as e:
-#         assert str(e) == "'test' is not a valid test_default_value_to_enums_definition.<locals>.test4"
-# 
+def test_default_value_to_enums_definition() -> None:
+    try:
+        @pg.enum.set_default('test comment')
+        class test0(tw.post_status, metaclass=pg.enum):
+            pass
+        assert False
+    except TypeError:
+        pass
+
+    class test1(tw.post_status, metaclass=pg.enum):
+        pass
+
+    try:
+        @pg.enum.set_default('published')
+        class test2(test1):
+            pass
+        assert False
+    except TypeError:
+        pass
+
+    @pg.enum.set_default(test1.enum.published)
+    class test2(test1):
+        pass
+
+    assert hasattr(test2, '_postgres_definition')
+    def2 = test2._postgres_definition
+    assert 'default' in def2
+    assert isinstance(def2['default'], pg.literal)
+    assert str(def2['default']._lit) == 'published'
+

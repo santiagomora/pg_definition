@@ -1,35 +1,5 @@
 
 
-CREATE OR REPLACE FUNCTION get_author_by_id(
-    p_author_id int8
-) RETURNS author AS $$
-DECLARE
-    v_result author;
-BEGIN
-    SELECT * FROM author
-        INTO v_result
-        WHERE id = p_author_id
-        LIMIT 1;
-    RETURN v_result;
-END;
-$$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION get_post_by_id(
-    p_post_id int8
-) RETURNS post AS $$
-DECLARE
-    v_result post;
-BEGIN
-    SELECT * FROM post
-        INTO v_result
-        WHERE id = p_post_id
-        LIMIT 1;
-    RETURN v_result;
-END;
-$$ LANGUAGE plpgsql;
-
-
 CREATE OR REPLACE FUNCTION get_author_posts(
     p_author author
 ) RETURNS SETOF post AS $$
@@ -74,6 +44,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+
 CREATE OR REPLACE FUNCTION get_post_comments(
     p_post post
 ) RETURNS SETOF comment AS $$
@@ -94,5 +65,20 @@ CREATE OR REPLACE FUNCTION as_comment_post(
 ) RETURNS comment_post AS $$
 BEGIN
     RETURN (p_comment, p_post, p_description, p_author)::comment_post;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION create_author()
+RETURNS author AS $$
+DECLARE 
+    v_count int8;
+    v_author author;
+BEGIN
+    v_count := nextval('author_id_sequence'::regclass) + 1;
+    INSERT INTO author(id, name)
+    VALUES (v_count, 'author ' || v_count)
+    RETURNING * INTO v_author;
+    RETURN v_author;
 END;
 $$ LANGUAGE plpgsql;

@@ -1,30 +1,52 @@
 import pg_definition as pg
-import test_app.backend.types as types
+from .functions import\
+    create_author,\
+    get_author_by_id,\
+    get_author_posts,\
+    get_post_by_id,\
+    get_post_comments,\
+    create_post,\
+    create_comment,\
+    as_comment_post
+from .types import\
+    author_id_sequence,\
+    author,\
+    with_timestamps,\
+    authored,\
+    post_status,\
+    post_id_sequence,\
+    post,\
+    comment_id_sequence,\
+    comment,\
+    comment_post,\
+    composite_author
 
 
-@pg.register_function_path_alias(
+@pg.schema.register_function_path_alias(
     alias='test_functions', current_file_path=__file__,
     function_path='./sql/functions.sql')
-class test(pg.schema):
+class test_app(pg.schema):
     # functions
-    # get_post_by_id: type[functions.get_post_by_id] = functions.get_post_by_id
-    # get_author_by_id: type[functions.get_author_by_id] = functions.get_author_by_id
-    # get_post_comments: type[functions.get_post_comments] = functions.get_post_comments
-    # get_author_posts: type[functions.get_author_posts] = functions.get_author_posts
-    # create_post: type[functions.create_post] = functions.create_post
-    # create_comment: type[functions.create_comment] = functions.create_comment
-    # as_comment_post: type[functions.as_comment_post] = functions.as_comment_post
+    create_author: type[create_author] = create_author
+    get_author_by_id: type[get_author_by_id] = get_author_by_id
+    get_author_posts: type[get_author_posts] = get_author_posts
+    get_post_by_id: type[get_post_by_id] = get_post_by_id
+    get_post_comments: type[get_post_comments] = get_post_comments
+    create_post: type[create_post] = create_post
+    create_comment: type[create_comment] = create_comment
+    as_comment_post: type[as_comment_post] = as_comment_post
     # sequences
-    author_id_sequence: type[types.author_id_sequence] = types.author_id_sequence
-    post_id_sequence: type[types.post_id_sequence] = types.post_id_sequence
-    comment_id_sequence: type[types.comment_id_sequence] = types.comment_id_sequence
+    author_id_sequence: type[author_id_sequence] = author_id_sequence
+    post_id_sequence: type[post_id_sequence] = post_id_sequence
+    comment_id_sequence: type[comment_id_sequence] = comment_id_sequence
     # enums
-    post_status: type[types.post_status] = types.post_status
+    post_status: type[post_status] = post_status
     # tables
-    author: type[types.author] = types.author
-    with_timestamps: type[types.with_timestamps] = types.with_timestamps
-    authored: type[types.authored] = types.authored
-    post: type[types.post] = types.post
-    comment: type[types.comment] = types.comment
+    author: type[author] = author
+    with_timestamps: type[with_timestamps] = with_timestamps
+    authored: type[authored] = authored
+    post: type[post] = post
+    comment: type[comment] = comment
     # composites
-    comment_post: type[types.comment_post] = types.comment_post
+    comment_post: type[comment_post] = comment_post
+    composite_author: type[composite_author] = composite_author

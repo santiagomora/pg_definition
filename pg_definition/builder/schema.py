@@ -45,7 +45,9 @@ class Rename(Sentence):
 
 
 class Set(Sentence):
-    pass
+    def __init__(self, component, old: Any) -> None:
+        Sentence.__init__(self, component)
+        self.old = old
 
 
 class Add(Sentence):
@@ -57,6 +59,10 @@ class Drop(Sentence):
 
 
 class Create(Sentence):
+    pass
+
+
+class Replace(Sentence):
     pass
 
 
@@ -94,9 +100,9 @@ class Renamable(ChecksDefinitionPresence):
 
 
 class Settable(ChecksDefinitionPresence):
-    def set(self) -> Set:
+    def set(self, old: Any) -> Set:
         # self.check_definition_is_present()
-        return self.__class__.Set(self)
+        return self.__class__.Set(self, old)
 
 
 class Alterable:
@@ -111,6 +117,12 @@ class Creatable:
         return self.__class__.Create(self)
 
 
+class Replaceable:
+    def replace(self) -> Replace:
+        # self.check_definition_is_present()
+        return self.__class__.Replace(self)
+
+
 class Executable:
     def execute(self) -> Execute:
         return self.__class__.Execute(self)
@@ -123,7 +135,8 @@ class Type(Component, Settable):
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Type.Set\
-                and self.component.definition['type'] != other.component.definition['type']
+                and self.old == other.component.definition['type']\
+                and other.old == self.component.definition['type']
 
 
 class TypeBuilder(Builder):
@@ -134,8 +147,9 @@ class TypeBuilder(Builder):
         self.tp = tp
         self.alter_lambda = alter_lambda
 
-    def set(self) -> Builder:
-        self.parent_builder.append(self.alter_lambda(self.tp.parent, self.tp.set()))
+    def set_from(self, old_type: type) -> Builder:
+        assert old_type != self.tp
+        self.parent_builder.append(self.alter_lambda(self.tp.parent, self.tp.set(old_type)))
         return self.parent_builder
 
 
@@ -175,7 +189,7 @@ class PrimaryKey(Constraint):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
-            return ('ADD CONSTRAINT {} PRIMARY KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
+            return ('ADD CONSTRAINT {}.{} PRIMARY KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.parent.parent.name), sql.Identifier(self.component.name)] + columns, [], )
 
 
 class ForeignKey(Constraint):
@@ -183,7 +197,7 @@ class ForeignKey(Constraint):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
-            return ('ADD CONSTRAINT {} FOREIGN KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
+            return ('ADD CONSTRAINT {}.{} FOREIGN KEY ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.parent.parent.name), sql.Identifier(self.component.name)] + columns, [], )
 
 
 class UniqueConstraint(Constraint):
@@ -191,13 +205,13 @@ class UniqueConstraint(Constraint):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [sql.Identifier(col) for col in self.component.definition['columns']]
             placeholders: list[str] = ['{}']*len(columns)
-            return ('ADD CONSTRAINT {} UNIQUE ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.name)] + columns, [], )
+            return ('ADD CONSTRAINT {}.{} UNIQUE ' + f'({", ".join(placeholders)})', [sql.Identifier(self.component.parent.parent.name), sql.Identifier(self.component.name)] + columns, [], )
 
 
 class CheckConstraint(Constraint):
     class Add(Constraint.Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('ADD CONSTRAINT {} CHECK {}', [sql.Identifier(self.component.name), sql.SQL(str(self.component.definition))], [], )
+            return ('ADD CONSTRAINT {}.{} CHECK {}', [sql.Identifier(self.component.parent.parent.name), sql.Identifier(self.component.name), sql.SQL(str(self.component.definition))], [], )
 
 
 class ConstraintBuilder(Builder):
@@ -241,7 +255,7 @@ class Default(Component, Droppable, Settable):
             elif isinstance(self.component.definition, pg.Operand):
                 return ('SET DEFAULT EXPRESSION {}', [sql.SQL(str(self.component.definition))], [], )
             elif isinstance(self.component.definition, pg.nextval):
-                seq_def: dict[str, Any] = getattr(self.component.definition.seq, '__pg_definition')()
+                seq_def: dict[str, Any] = self.component.definition.seq._postgres_definition
                 return ('SET DEFAULT nextval(%s)', [], [f'{seq_def["schema"]}.{self.component.definition.seq.__name__}'], )
             else:
                 return ('SET DEFAULT {}', [sql.SQL(str(self.component.definition))], [], )
@@ -269,8 +283,8 @@ class DefaultBuilder(Builder):
         self.default = default
         self.alter_lambda = alter_lambda
 
-    def set(self) -> 'SchemaBuilder':
-        self.parent_builder.append(self.alter_lambda(self.default.parent, self.default.set()))
+    def set_from(self, old_default: Any) -> 'SchemaBuilder':
+        self.parent_builder.append(self.alter_lambda(self.default.parent, self.default.set(old_default)))
         return self.parent_builder
 
     def drop(self) -> 'SchemaBuilder':
@@ -281,7 +295,7 @@ class DefaultBuilder(Builder):
 class Column(Component, Alterable, Droppable, Addable, Renamable):
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
+            tdef: dict[str, Any] = self.component.definition["type"]._postgres_definition
             return ('ADD COLUMN {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
@@ -330,7 +344,7 @@ class TableColumnBuilder(Builder):
             lambda column, change: column.parent.alter(column.alter(change)))
 
     def type(self) -> TypeBuilder:
-        tp: Type = Type('type', self.column, getattr(self.column.definition['type'], '__pg_definition')())
+        tp: Type = Type('type', self.column, self.column.definition['type']._postgres_definition)
         return TypeBuilder(
             self.parent_builder, tp,
             lambda column, change: column.parent.alter(column.alter(change)))
@@ -417,9 +431,9 @@ class Table(Component, Droppable, Creatable, Alterable, Renamable):
         def sql_sentence_params(self) -> SQLSentenceParams:
             bases: list[sql.Identifier] = []
             placeholders: list[str] = []
-            base_classes: Optional[list[type]] = self.component.definition['base_classes']
-            for base in [] if base_classes is None else base_classes:
-                definition: dict[str, Any] = getattr(base, '__pg_definition')()
+            bases: Optional[list[type]] = self.component.definition['bases']
+            for base in [] if bases is None else bases:
+                definition: dict[str, Any] = base._postgres_definition
                 bases += [sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
                 placeholders += ['{}.{}']
             return ('CREATE TABLE {}.{} () INHERITS ' + f'({", ".join(placeholders)})' if len(bases) > 0 else 'CREATE TABLE {}.{} ()', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + bases, [])
@@ -515,7 +529,7 @@ class Attribute(Component, Renamable, Addable, Droppable, Alterable):
 
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            tdef: dict[str, Any] = getattr(self.component.definition["type"], '__pg_definition')()
+            tdef: dict[str, Any] = self.component.definition["type"]._postgres_definition
             return ('ADD ATTRIBUTE {} {}.{}', [sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
@@ -548,7 +562,7 @@ class CompositeAttributeBuilder(Builder):
         self.parent_builder = parent_builder
 
     def type(self) -> TypeBuilder:
-        tp: Type = Type('type', self.attribute, getattr(self.attribute.definition['type'], '__pg_definition')())
+        tp: Type = Type('type', self.attribute, self.attribute.definition['type']._postgres_definition)
         return TypeBuilder(
             self.parent_builder, tp,
             lambda attribute, change: attribute.parent.alter(attribute.alter(change)))
@@ -729,7 +743,7 @@ class EnumBuilder(Builder):
 class Domain(Component, Creatable, Alterable, Renamable, Droppable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            tdef: dict[str, Any] = getattr(self.component.definition["base_type"], '__pg_definition')()
+            tdef: dict[str, Any] = self.component.definition["base_type"]._postgres_definition
             return ('CREATE DOMAIN {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(tdef['schema'].__name__), sql.Identifier(tdef['type'].__name__)], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
@@ -788,7 +802,7 @@ class DomainBuilder(Builder):
 class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            base_tdef = getattr(self.component.definition["base_type"], '__pg_definition')()
+            base_tdef = self.component.definition["base_type"]._postgres_definition
             return ('CREATE SEQUENCE {}.{} AS {}.{}', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name), sql.Identifier(base_tdef['schema'].__name__), sql.Identifier(base_tdef['type'].__name__)], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
@@ -809,6 +823,9 @@ class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
         class Set(Type.Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
                 return ('AS {}.{}', [sql.Identifier(self.component.definition['schema'].__name__), sql.Identifier(self.component.definition['type'].__name__)], [])
+
+            def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+                return True
 
     class MinValue(Component, Settable):
         class Set(Set):
@@ -871,8 +888,8 @@ class SequenceAttributeBuilder(Builder):
         self.sequence_attribute = sequence_attribute
         self.parent_builder = parent_builder
 
-    def set(self) -> 'SchemaBuilder':
-        self.parent_builder.append(self.sequence_attribute.parent.alter(self.sequence_attribute.set()))
+    def set_from(self, old: Any) -> 'SchemaBuilder':
+        self.parent_builder.append(self.sequence_attribute.parent.alter(self.sequence_attribute.set(old)))
         return self.parent_builder
 
 
@@ -884,7 +901,7 @@ class SequenceBuilder(Builder):
         self.parent_builder = parent_builder
 
     def type(self) -> TypeBuilder:
-        tp: Sequence.Type = Sequence.Type('type', self.sequence, getattr(self.sequence.definition['base_type'], '__pg_definition')())
+        tp: Sequence.Type = Sequence.Type('type', self.sequence, self.sequence.definition['base_type']._postgres_definition)
         return TypeBuilder(
             self.parent_builder, tp, lambda sequence, change: sequence.alter(change))
 
@@ -920,7 +937,7 @@ class SequenceBuilder(Builder):
         return self.parent_builder
 
 
-class Function(Component, Executable):
+class Function(Component, Executable, Droppable):
     class Execute(Execute):
         def __init__(self, component: Component, params: dict[str, Any]):
             Execute.__init__(self, component)
@@ -930,16 +947,38 @@ class Function(Component, Executable):
             return (self.component.definition['type'].as_sql_query('PERFORM', self.params), [], self.params, )
 
         def _get_action_name(self):
-            if self.component.name.endswith("rollback"):
-                return "rollback"
-            elif self.component.name.endswith("commit"):
-                return "commit"
+            if self.component.name.endswith("downgrade"):
+                return "downgrade"
+            elif self.component.name.endswith("upgrade"):
+                return "upgrade"
             else:
                 raise ValueError(f'Invalid function name: "{self.component.name}"')
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return isinstance(other, Function.Execute)\
-                and other.component.name.endswith("commit" if self._get_action_name() == "rollback" else "commit")
+                and other.component.name.endswith("upgrade" if self._get_action_name() == "downgrade" else "upgrade")
+
+    class Drop(Drop):
+        def __init__(self, component: Component, overload: dict[str, Any]):
+            Execute.__init__(self, component)
+            self.overload = overload
+
+        def sql_sentence_params(self) -> SQLSentenceParams:
+            overload: list[sql.Identifier] = []
+            placeholders: list[str] = []
+            for param_name, param_type in self.overload.items():
+                definition: dict[str, Any] = param_type._postgres_definition
+                overload += [sql.Identifier(param_name), sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
+                placeholders.append('{} {}.{}')
+            return ('DROP FUNCTION {}.{} ' + f'({", ".join(placeholders )})', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + overload, [], )
+
+        def is_opposite(self, other: GeneratesSQLSentence) -> bool:
+            return True
+
+    def drop(self, overload: dict[str, type]) -> Drop:
+        # TODO validate overload is not present in schema
+        # TODO validate overload is not present in file
+        return self.__class__.Drop(self, overload)
 
     def execute(self, params: dict[str, Any]) -> Execute:
         return self.__class__.Execute(self, params)
@@ -956,67 +995,61 @@ class FunctionBuilder(Builder):
         self.parent_builder.append(self.function.execute(params))
         return self.parent_builder
 
+    def load(
+        self, *, from_function_path_alias: str
+    ) -> 'LoadFunctionBuilder':
+        try:
+            overloads: dict[str, list[str]] = load_functions_from_file(
+                self.function.parent.definition['function_path_alias'][from_function_path_alias],
+                self.function.parent.name, (self.function.name, )
+            )[self.function.name]
+            return LoadFunctionBuilder(
+                self.parent_builder,
+                [LoadedFunction(self.function.name, self.function.parent, fn) for fn in overloads]
+            )
+        except KeyError:
+            raise Exception(f'function {self.function.name} not defined in alias {from_function_path_alias}')
 
-class LoadedFunction(Component, Creatable, Droppable):
+    def drop(self, overload: dict[str, type]) -> 'SchemaBuilder':
+        self.parent_builder.append(self.function.drop(overload))
+        return self.parent_builder
+
+
+class LoadedFunction(Component, Creatable, Replaceable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
             return (self.component.definition, [], [])
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
-            return True
+            return other.__class__ == Function.Drop and\
+                self.component.name == other.component.name
 
-    class Drop(Drop):
-        def __init__(self, component: Component, overload: dict[str, Any]):
-            Execute.__init__(self, component)
-            self.overload = overload
-
+    class Replace(Replace):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            overload: list[sql.Identifier] = []
-            placeholders: list[str] = []
-            for param_name, param_type in self.overload.items():
-                definition: dict[str, Any] = getattr(param_type, '__pg_definition')()
-                overload += [sql.Identifier(param_name), sql.Identifier(definition['schema'].__name__), sql.Identifier(definition['type'].__name__)]
-                placeholders.append('{} {}.{}')
-            return ('DROP FUNCTION {}.{} ' + f'({", ".join(placeholders )})', [sql.Identifier(self.component.parent.name), sql.Identifier(self.component.name)] + overload, [], )
+            return (self.component.definition, [], [])
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
-            return True
-
-    def drop(self, overload: dict[str, type]) -> Drop:
-        # TODO validate overload is not present in schema
-        # TODO validate overload is not present in file
-        return self.__class__.Drop(self, overload)
-
-
-class LoadFunctionBuilderInner(Builder):
-    def __init__(
-        self, parent_builder: 'SchemaBuilder', function: LoadedFunction
-    ) -> None:
-        self.function = function
-        self.parent_builder = parent_builder
-
-    def create_or_replace(self) -> 'SchemaBuilder':
-        for definition in self.function.definition:
-            function: LoadedFunction = LoadedFunction(self.function.name, self.function.parent, definition)
-            self.parent_builder.append(function.create())
-        return self.parent_builder
-
-    def drop_overload(self, overload: Optional[dict[str, type]]) -> 'SchemaBuilder':
-        self.parent_builder.append(self.function.drop(overload))
-        return self.parent_builder
+            return other.__class__ == LoadedFunction.Replace and\
+                self.component.name == other.component.name
 
 
 class LoadFunctionBuilder(list[Any], Builder):
     def __init__(
-        self, parent_builder: 'SchemaBuilder', loaded_functions: LoadedFunction
+        self, parent_builder: 'SchemaBuilder', loaded_functions: list[LoadedFunction]
     ) -> None:
         list.__init__(self)
         self.loaded_functions = loaded_functions
         self.parent_builder = parent_builder
 
-    def function(self, name: str) -> LoadFunctionBuilderInner:
-        function: LoadedFunction = LoadedFunction(name, self.loaded_functions.parent, self.loaded_functions.definition.get(name, None))
-        return LoadFunctionBuilderInner(self, function)
+    def create(self, overload=None) -> 'SchemaBuilder':
+        for function in self.loaded_functions:
+            self.parent_builder.append(function.create())
+        return self.parent_builder
+
+    def replace(self, overload=None) -> 'SchemaBuilder':
+        for function in self.loaded_functions:
+            self.parent_builder.append(function.replace())
+        return self.parent_builder
 
 
 class Schema(Component, Creatable, Droppable):
@@ -1054,7 +1087,7 @@ class SchemaBuilder(list[Any], Builder):
         if tp is None:
             return builder_cls(self, cls(name, self.schema, None))
         else:
-            return builder_cls(self, cls(name, self.schema, getattr(tp, '__pg_definition')()))
+            return builder_cls(self, cls(name, self.schema, tp._postgres_definition))
 
     def table(self, name: str) -> TableBuilder:
         return self._get_builder(name, TableBuilder, Table)
@@ -1074,9 +1107,6 @@ class SchemaBuilder(list[Any], Builder):
     def function(self, name: str) -> FunctionBuilder:
         return self._get_builder(name, FunctionBuilder, Function)
 
-    def load_functions(self, names: Optional[tuple[str, ...]], *, from_function_path_alias: str) -> LoadFunctionBuilder:
-        return LoadFunctionBuilder(self, LoadedFunction(None, self.schema, load_functions_from_file(self.schema.definition['function_path_alias'][from_function_path_alias], self.schema.name, names)))
-
     def create(self) -> 'SchemaBuilder':
         self.append(self.schema.create())
         return self
@@ -1087,5 +1117,5 @@ class SchemaBuilder(list[Any], Builder):
 
 
 def builder(schema: type) -> SchemaBuilder:
-    schema: Schema = Schema(schema.__name__, None, getattr(schema, '__pg_definition')())
+    schema: Schema = Schema(schema.__name__, None, schema._postgres_definition)
     return SchemaBuilder(schema)

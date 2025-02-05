@@ -55,7 +55,7 @@ class Sentence(WrapsComponent, GeneratesSQLSentence):
 
 def load_functions_from_file(
     path: str, schema: str, names: Optional[tuple[str, ...]]
-) -> dict[str, str]:
+) -> dict[str, list[str]]:
     assert os.path.exists(path)
     res: dict[str, str] = {}
     buf, func_name = [], ''

@@ -13,11 +13,18 @@ from ..common.flow import\
 from typing import \
     Optional
 import base_types as bt
-from ..objects.check import\
-    check
+from ..objects.comment import\
+    add_comment
+from ..common.inspection import\
+    check_tp_is_domain,\
+    check_tp_is_not_domain
+from pydantic_core import\
+    core_schema
+from pydantic import\
+    GetCoreSchemaHandler
 
 
-__all__ = ['builtin']
+__all__ = ['builtin', 'compound']
 
 
 _builtin_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('builtin-definition-flow')
@@ -36,18 +43,50 @@ class BuiltinDomainOperandDefinitionContext(bt.OperandDefinitionContext):
 
 
 class compound(bt.compound):
-    pass
+    class set_constraint(bt.compound.set_constraint):
+        def __init__(
+            self, *, field_name: str, constraint: bt.LogicOperand, accessor: str
+        ) -> None:
+            self.accessor = accessor
+            return super().__init__(field_name=field_name, constraint=constraint)
+
+        def __call__(self, target: type) -> type:
+            self._constraint.name = f'{target.__name__}_{self._constraint.name}'
+            target._postgres_definition[self.accessor][self._field_name]['check'] = self._constraint
+            return super().__call__(target)
+
+    class set_default(bt.compound.set_default):
+        pass
 
 
 class builtin(bt.builtin):
+    class set_default(bt.builtin.set_default):
+        def __call__(self, target: type) -> type:
+            check_tp_is_domain(target)
+            target._postgres_definition['default'] = self._default
+            return super().__call__(target)
+
+    class set_check_constraint(bt.builtin.set_constraint):
+        def __init__(self, *, name: str, constraint: bt.LogicOperand) -> None:
+            constraint.name = name
+            return super().__init__(constraint)
+
+        def __call__(self, target: type) -> type:
+            check_tp_is_domain(target)
+            target._postgres_definition['check'] = self._constraint
+            return super().__call__(target)
+
+    class add_comment(add_comment):
+        def __call__(self, target: type) -> type:
+            check_tp_is_domain(target)
+            return super().__call__(target)
+
     def __new__(
         cls, clsname: str, clsbases: tuple[type],
-        clsdict: dict[str, Any], *, check_predicate: Optional[check] = None,
-        default: Optional[bt.literal] = None
+        clsdict: dict[str, Any]
     ) -> type:
         rettype: type = super().__new__(
-            cls, clsname, clsbases, clsdict,
-            check_predicate=None if check_predicate is None else check_predicate.predicate, default=default
+            cls, clsname, clsbases, clsdict
         )
         execute_definition_flow(rettype, _builtin_definition_flow_root)
         return rettype
@@ -61,7 +100,8 @@ class _BuiltinDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):
         super().__init__(2, 'builtin-determine-if-target-is-domain-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        self.is_domain = hasattr(target.__bases__[0], '__pg_definition')
+        self.is_domain = hasattr(target, 'base_type')\
+            and not target.base_type.qualified_name.startswith('base_types')
 
     def get_next(self, accumulator: FlowAccumulator) -> DefinitionFlowNode:
         if self.is_domain:
@@ -95,56 +135,15 @@ class _BuiltinDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None
         definition['kind'] = 'domain'
-        predicate = getattr(target, '__check_predicate__')()
-        definition['check'] = predicate.parent if predicate is not None else None
-        definition['default'] = getattr(target, '__default__')()
+        definition['check'] = None
+        definition['default'] = bt.Undefined
         accumulator.add_definition('final', definition)
 
 
 builtin_builder\
     .at_work_path('')\
-        .add_node(_BuiltinDetermineIfTargetIsDomainNode).critical()\
+    .add_node(_BuiltinDetermineIfTargetIsDomainNode).critical()\
     .build_choice(_BuiltinDomainStoreFinalDefinitionNode)\
         .end_choice()\
     .build_choice(_BuiltinStoreFinalDefinition)\
         .end_choice()
-
-
-class int2(bt.int2, metaclass=builtin):
-    pass
-
-
-class int4(bt.int4, metaclass=builtin):
-    pass
-
-
-class int8(bt.int8, metaclass=builtin):
-    pass
-
-
-class float4(bt.float4, metaclass=builtin):
-    pass
-
-
-class float8(bt.float8, metaclass=builtin):
-    pass
-
-
-class int1(bt.int1, metaclass=builtin):
-    pass
-
-
-class bool(bt.bool, metaclass=builtin):
-    pass
-
-
-class text(bt.text, metaclass=builtin):
-    pass
-
-
-class timestamptz(bt.timestamptz, metaclass=builtin):
-    pass
-
-
-class date(bt.date, metaclass=builtin):
-    pass

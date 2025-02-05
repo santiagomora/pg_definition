@@ -62,7 +62,7 @@
 # 
 # 
 # class _domain1(
-#     pg.int8, check_predicate=pg.check(
+#     pg.int8, constraint=pg.check(
 #         name='_domain1_gt_0', predicate=pg.this() > pg.literal(0)
 #     )
 # ):

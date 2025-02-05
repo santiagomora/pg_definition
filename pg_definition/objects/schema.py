@@ -8,21 +8,15 @@ from ..common.flow import\
     DefinitionFlowBuilder,\
     execute_definition_flow,\
     NodeException
-from ..types.composite import\
-    composite
-from ..types.table import\
-    table
-from ..types.enums import\
-    enum
-from .sequence import\
-    sequence
 from typing import\
     Generator
-# from .function import\
-#     function
+from .function import\
+    function
+from .comment import\
+    add_comment
 
 
-__all__ = ['schema', 'register_function_path_alias']
+__all__ = ['schema']
 
 
 _schema_definition_flow_root: RootDefinitionFlowNode = RootDefinitionFlowNode('schema-definition-flow')
@@ -45,57 +39,63 @@ class _schema(type):
         return rettype
 
     @property
-    def tables(self) -> Generator[type[table], None, None]:
-        schema_def: dict[str, Any] = self.__pg_definition()
+    def tables(self) -> Generator[type, None, None]:
+        schema_def: dict[str, Any] = self._postgres_definition
         for name, tp in schema_def['objects'].items():
-            if issubclass(tp, table):
+            if tp._postgres_definition['kind'] == 'table':
                 yield tp
 
     @property
-    def composites(self) -> Generator[type[composite], None, None]:
-        schema_def: dict[str, Any] = self.__pg_definition()
+    def composites(self) -> Generator[type, None, None]:
+        schema_def: dict[str, Any] = self._postgres_definition
         for name, tp in schema_def['objects'].items():
-            if not issubclass(tp, composite):
-                continue
-            tp_def: dict[str, Any] = getattr(tp, '__pg_definition')()
-            if 'base_type' not in tp_def:
+            if tp._postgres_definition['kind'] == 'composite':
                 yield tp
 
     @property
-    def enums(self) -> Generator[enum, None, None]:
-        schema_def: dict[str, Any] = self.__pg_definition()
+    def enums(self) -> Generator[type, None, None]:
+        schema_def: dict[str, Any] = self._postgres_definition
         for name, tp in schema_def['objects'].items():
-            if not isinstance(tp, enum):
-                continue
-            tp_def: dict[str, Any] = getattr(tp, '__pg_definition')()
-            if 'base_type' not in tp_def:
+            if tp._postgres_definition['kind'] == 'enum':
                 yield tp
 
     @property
-    def domains(self) -> Generator[enum, None, None]:
-        schema_def: dict[str, Any] = self.__pg_definition()
+    def domains(self) -> Generator[type, None, None]:
+        schema_def: dict[str, Any] = self._postgres_definition
         for name, tp in schema_def['objects'].items():
-            tp_def: dict[str, Any] = getattr(tp, '__pg_definition')()
-            if 'base_type' in tp_def:
+            if tp._postgres_definition['kind'] == 'domain':
                 yield tp
 
-    # @property
-    # def functions(self) -> Generator[function, None, None]:
-    #     schema_def: dict[str, Any] = self.__pg_definition()
-    #     for name, tp in schema_def['objects'].items():
-    #         if isinstance(tp, function):
-    #             yield tp
-
     @property
-    def sequences(self) -> Generator[sequence, None, None]:
+    def functions(self) -> Generator[function, None, None]:
         schema_def: dict[str, Any] = self.__pg_definition()
         for name, tp in schema_def['objects'].items():
-            if isinstance(tp, sequence):
+            if tp._postgres_definition['kind'] == 'function':
+                yield tp
+
+    @property
+    def sequences(self) -> Generator[type, None, None]:
+        schema_def: dict[str, Any] = self._postgres_definition
+        for name, tp in schema_def['objects'].items():
+            if tp._postgres_definition['kind'] == 'sequence':
                 yield tp
 
 
 class schema(metaclass=_schema):
-    pass
+    class add_comment(add_comment):
+        pass
+
+    class register_function_path_alias:
+        def __init__(self, *, alias: str, current_file_path: str, function_path: str) -> None:
+            self.name = alias
+            self.path = f'{os.path.dirname(os.path.abspath(current_file_path))}/{function_path}'
+
+        def __call__(self, target: type):
+            assert issubclass(target, schema)
+            definition: dict[str, Any] = target._postgres_definition
+            assert self.name not in definition['function_path_alias']
+            definition['function_path_alias'][self.name] = self.path
+            return target
 
 
 class _SchemaSetSchemaOnMembersNode(SingleChoiceDefinitionFlowNode):
@@ -107,7 +107,7 @@ class _SchemaSetSchemaOnMembersNode(SingleChoiceDefinitionFlowNode):
         errors: list[str] = []
         for name, value in target.__dict__.items():
             if not name.startswith('__'):
-                definition: dict[str, Any] = getattr(value, '__pg_definition')()
+                definition: dict[str, Any] = value._postgres_definition
                 definition['schema'] = target
                 if value.__name__ in objects:
                     errors.append(f'Schema "{target.__name__}" name conflict: "{target.__name__}" defined more than once')
@@ -141,16 +141,3 @@ schema_definition_flow_builder\
     .add_node(_SchemaSetSchemaOnMembersNode)\
     .at_work_path('')\
     .add_node(_SchemaStoreFinalDefinitionNode)
-
-
-class register_function_path_alias:
-    def __init__(self, *, alias: str, current_file_path: str, function_path: str) -> None:
-        self.name = alias
-        self.path = f'{os.path.dirname(os.path.abspath(current_file_path))}/{function_path}'
-
-    def __call__(self, target: type):
-        assert issubclass(target, schema)
-        definition: dict[str, Any] = getattr(target, '__pg_definition')()
-        assert self.name not in definition['function_path_alias']
-        definition['function_path_alias'][self.name] = self.path
-        return target

@@ -193,7 +193,9 @@ class MultipleChoiceDefinitionFlowNode(DefinitionFlowNode):
 
 
 class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
-    def execute(self, on_type: type, accumulator: FlowAccumulator) -> None:
+    def execute(
+        self, on_type: type, accumulator: FlowAccumulator
+    ) -> None:
         node: DefinitionFlowNode = self.get_next(accumulator)
         executed: set[str] = set[str]()
         while node is not None:
@@ -216,16 +218,19 @@ class RootDefinitionFlowNode(SingleChoiceDefinitionFlowNode):
                     node = node.get_next(acc)
 
 
-def execute_definition_flow(on_type: type, root: RootDefinitionFlowNode) -> dict[str, Any]:
+def execute_definition_flow(
+    on_type: type, root: RootDefinitionFlowNode
+) -> dict[str, Any]:
     accumulator: FlowAccumulator = FlowAccumulator(on_type)
     root.execute(on_type, accumulator)
     final: dict[str, Any] = accumulator.get_definition('final')
 
     @classmethod
-    def __pg_definition(cls) -> dict[str, Any]:
+    @property
+    def postgres_adapt(cls) -> dict[str, Any]:
         return final
 
-    setattr(on_type, '__pg_definition', __pg_definition)
+    setattr(on_type, '_postgres_definition', postgres_adapt)
 
 
 class DefinitionFlowBuilder:

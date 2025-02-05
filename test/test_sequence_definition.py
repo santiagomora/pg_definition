@@ -18,8 +18,8 @@ def test_sequence_definition_flow_correctly_executed() -> None:
     class test4(pg.sequence, base=pg.int2):
         pass
 
-    assert hasattr(test4, '__pg_definition')
-    def4 = getattr(test4, '__pg_definition')()
+    assert hasattr(test4, '_postgres_definition')
+    def4 = test4._postgres_definition
     assert 'base_type' in def4
     assert def4['base_type'] == pg.int2
     assert 'comment' in def4
@@ -34,19 +34,19 @@ def test_sequence_definition_flow_correctly_executed() -> None:
 
 def test_decorators_correctly_applied() -> None:
     # NOTE decorators are correctly applied
-    @pg.add_comment('test comment')
-    @pg.min_value(0)
-    @pg.max_value(10)
-    @pg.increment(5)
+    @pg.sequence.add_comment(value='test comment')
+    @pg.sequence.min_value(0)
+    @pg.sequence.max_value(10)
+    @pg.sequence.increment(5)
     class test0(pg.sequence, base=pg.int4):
         pass
 
-    assert hasattr(test0, '__pg_definition')
-    def0 = getattr(test0, '__pg_definition')()
+    assert hasattr(test0, '_postgres_definition')
+    def0 = test0._postgres_definition
     assert 'base_type' in def0
     assert def0['base_type'] == pg.int4
     assert 'comment' in def0
-    assert def0['comment'] == pg.comment('test comment')
+    assert def0['comment'].value == 'test comment'
     assert def0['min_value'] == 0
     assert def0['max_value'] == 10
     assert def0['increment'] == 5

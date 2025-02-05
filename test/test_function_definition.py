@@ -21,8 +21,8 @@
 #     class test_func(pg.single_result_function[pg.int8]):
 #         pass
 # 
-#     assert hasattr(test_func, '__pg_definition')
-#     def0 = getattr(test_func, '__pg_definition')()
+#     assert hasattr(test_func, '_postgres_definition')
+#     def0 = getattr(test_func, '_postgres_definition')()
 #     assert 'comment' in def0
 #     assert def0['comment'] is None
 #     assert 'type' in def0
