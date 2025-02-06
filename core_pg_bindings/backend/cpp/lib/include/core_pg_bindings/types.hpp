@@ -1,5 +1,5 @@
-#ifndef PG_DEFINITION_INCLUDE_TYPES
-#define PG_DEFINITION_INCLUDE_TYPES
+#ifndef CORE_PG_BINDINGS_TYPES
+#define CORE_PG_BINDINGS_TYPES
 
 
 #include <pqxx/pqxx>
