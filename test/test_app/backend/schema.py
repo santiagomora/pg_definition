@@ -1,4 +1,4 @@
-import pg_definition as pg
+import core_pg_bindings as pg
 from .functions import\
     create_author,\
     get_author_by_id,\

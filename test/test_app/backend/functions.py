@@ -1,5 +1,5 @@
 import test_app.backend.cpp.wrapper as tw
-import pg_definition as pg
+import core_pg_bindings as pg
 
 
 class create_author(pg.function[pg.Optional[tw.author]], function=tw.create_author):

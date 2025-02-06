@@ -2,12 +2,12 @@
 #define TEST_APP_TYPES
 
 
-#include "pg_definition/types.hpp"
+#include "core_pg_bindings/types.hpp"
 #include "test_app/definition.hpp"
 
 
-namespace pg = pg_definition;
-// DEBUG clear && g++ -P -E -I/usr/include/boost -I../../../../../../../base_types/base_types/cpp -I../../../../../../pg_definition/cpp -I../../../../../../../../../dev/usr/include -I./ types.hpp
+namespace pg = core_pg_bindings;
+// DEBUG clear && g++ -P -E -I/usr/include/boost -I../../../../../../../python/core/core_types/core_types/cpp -I../../../../../../core_pg_bindings/cpp -I../../../../../../../../../dev/usr/include -I./ types.hpp
 
 
 namespace test_app 
@@ -45,14 +45,14 @@ comment_post as_comment_post(post& p_post, comment& p_comment, pg::text& p_descr
 namespace pqxx 
 {
 
-PG_CLASSDEF_CONVERSION(TEST_APP_AUTHOR);
-PG_CLASSDEF_CONVERSION(TEST_APP_AUTHORED);
-PG_CLASSDEF_CONVERSION(TEST_APP_WITH_TIMESTAMPS);
-PG_ENUMDEF_CONVERSION(TEST_APP_POST_STATUS);
-PG_CLASSDEF_CONVERSION(TEST_APP_POST);
-PG_CLASSDEF_CONVERSION(TEST_APP_COMMENT);
-PG_CLASSDEF_CONVERSION(TEST_APP_COMMENT_POST);
-PG_CLASSDEF_CONVERSION(TEST_APP_COMPOSITE_AUTHOR);
+PG_DECLARE_TABLE_CONVERSION(TEST_APP_AUTHOR);
+PG_DECLARE_TABLE_CONVERSION(TEST_APP_AUTHORED);
+PG_DECLARE_TABLE_CONVERSION(TEST_APP_WITH_TIMESTAMPS);
+PG_DECLARE_ENUM_CONVERSION(TEST_APP_POST_STATUS);
+PG_DECLARE_TABLE_CONVERSION(TEST_APP_POST);
+PG_DECLARE_TABLE_CONVERSION(TEST_APP_COMMENT);
+PG_DECLARE_COMPOSITE_CONVERSION(TEST_APP_COMMENT_POST);
+PG_DECLARE_COMPOSITE_CONVERSION(TEST_APP_COMPOSITE_AUTHOR);
 
 };
 

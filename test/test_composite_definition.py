@@ -1,4 +1,4 @@
-import pg_definition as pg
+import core_pg_bindings as pg
 from typing_extensions import\
     Annotated
 from typing import\
@@ -49,7 +49,7 @@ def test_composite_flow_validates_single_inheritance() -> None:
             pass
         assert False
     except TypeError as e:
-        assert str(e) == "compound type <class 'pg_definition.types.composite.composite'> only allows one base class"
+        assert str(e) == "compound type <class 'core_pg_bindings.types.composite.composite'> only allows one base class"
 
 
 def test_composite_flow_detects_invalid_check_in_definition() -> None:

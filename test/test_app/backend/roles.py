@@ -1,5 +1,5 @@
 from .schema import test_app
-import pg_definition as pg
+import core_pg_bindings as pg
 
 
 @pg.permission.grant.schema.usage(test_app)

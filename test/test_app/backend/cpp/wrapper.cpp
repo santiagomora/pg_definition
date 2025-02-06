@@ -1,4 +1,4 @@
-#include "pg_definition/macros/register.hpp"
+#include "core_pg_bindings/macros/register.hpp"
 
 #include "test_app/types.hpp"
 
@@ -6,7 +6,7 @@
 namespace py = pybind11;
 
 
-// DEBUG clear && g++ -P -E -I/usr/include/boost -I../../../../pg_definition/cpp -I../../../../../base_types/base_types/cpp  -I./ wrapper.cpp
+// DEBUG clear && g++ -P -E -I/usr/include/boost -I../../../../core_pg_bindings/cpp -I../../../../../python/core/core_types/core_types/cpp  -I./ wrapper.cpp
 
 
 PYBIND11_MODULE (wrapper, m) {

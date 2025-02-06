@@ -1,5 +1,5 @@
-import pg_definition as pg
-import base_types as bt
+import core_pg_bindings as pg
+import core_types as bt
 # import numpy as np
 
 

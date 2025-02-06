@@ -1,4 +1,4 @@
-import pg_definition as pg
+import core_pg_bindings as pg
 import test_app.backend.cpp.wrapper as tw
 
 

@@ -5,7 +5,7 @@ bin
 lib64
 ./include
 .cache
-pg_definition.egg-info
+core_pg_bindings.egg-info
 dist
 commit.msg
 .commit.msg.swp

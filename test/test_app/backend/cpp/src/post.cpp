@@ -1,7 +1,7 @@
 #include "test_app/types.hpp"
 
 
-namespace pg = pg_definition;
+namespace pg = core_pg_bindings;
 
 
 // "host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En"

@@ -1,4 +1,4 @@
-# import pg_definition.builder.role as rb
+# import core_pg_bindings.builder.role as rb
 # import psycopg
 # from typing import\
 #     Generator

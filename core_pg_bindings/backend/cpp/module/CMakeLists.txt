@@ -6,21 +6,12 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -fPIC -march=native -flto=auto -Wno-attribute
 set(pybind11_DIR /home/smora/sgs/dev/python/core/venv/lib/python3.12/site-packages/pybind11/share/cmake/pybind11)
 find_package(pybind11 REQUIRED)
 pybind11_add_module(${PROJECT_NAME}
-    wrapper.cpp
-    src/init.cpp
-    src/post.cpp
-    src/author.cpp)
-target_include_directories(${PROJECT_NAME} PRIVATE ./include)
-target_include_directories(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_pg_bindings/core_pg_bindings/backend/cpp/lib/include)
-
+    wrapper.cpp)
+target_include_directories(${PROJECT_NAME} PRIVATE ../lib/include)
 target_include_directories(${PROJECT_NAME} PRIVATE /home/smora/dev/usr/include/)
-target_link_libraries(${PROJECT_NAME} PRIVATE /home/smora/dev/usr/lib/libpqxx.so)
-target_link_libraries(${PROJECT_NAME} PRIVATE pq)
-
 target_include_directories(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_types/core_types/cpp/lib/include)
-target_link_libraries(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_types/core_types/cpp/lib/build/libcore_types.so)
+target_include_directories(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_types/core_types/cpp/module/include)
 
-target_include_directories(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_pg_bindings/core_pg_bindings/backend/cpp/lib/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_pg_bindings/core_pg_bindings/backend/cpp/lib/build/libcore_pg_bindings.so)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${PYBIND11_INCLUDE_DIRS})

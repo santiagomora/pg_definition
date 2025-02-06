@@ -1,4 +1,4 @@
-import pg_definition as pg
+import core_pg_bindings as pg
 from typing import\
     Any
 import sys
@@ -40,7 +40,7 @@ def test_role_definition_flow_detects_invalid_bases() -> None:
     except pg.FlowException as errors:
         e = errors.get_error('permission-definition-flow',
                              'role-validate-base-classes-node')
-        assert str(e) == "Role cant have <class 'pg_definition.objects.permission.permission'> as a base class"
+        assert str(e) == "Role cant have <class 'core_pg_bindings.objects.permission.permission'> as a base class"
 
     try:
         class test_permission_1(pg.permission):

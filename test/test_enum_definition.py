@@ -1,6 +1,6 @@
 from enum import\
     auto
-import pg_definition as pg
+import core_pg_bindings as pg
 from typing import\
     Optional
 import test_app.backend.types as tat

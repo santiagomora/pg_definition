@@ -1,7 +1,7 @@
 #include "test_app/types.hpp"
 
 
-namespace pg = pg_definition;
+namespace pg = core_pg_bindings;
 
 
 test_app::author test_app::create_author () 

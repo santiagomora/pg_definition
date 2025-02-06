@@ -2,7 +2,7 @@
 #define TEST_APP_DEFINITION
 
 
-#include "pg_definition/macros/definition.hpp"
+#include "core_pg_bindings/macros/definition.hpp"
 
 
 #define TEST_APP_AUTHOR PG_TABLE_NO_BASES_DEFINITION(\
@@ -95,12 +95,13 @@
 #define TEST_APP_COMPOSITE_AUTHOR_CONSTRUCTORS (TEST_APP_COMPOSITE_AUTHOR)
 
 
-// #define TEST_APP_DOMAIN ALIAS_DEFINITION(
-//     TEST_APP_DOMAIN,
-//     (test_app, domain),
-//     INT8_PY
+// #define TEST_APP_DOMAIN ALIAS_DEFINITION(\
+//     TEST_APP_DOMAIN,\
+//     (test_app, domain),\
+//     BTP_INT8\
 // )
+// #define TEST_APP_DOMAIN_CONSTRUCTORS (TEST_APP_DOMAIN) BTP_INT8_CONSTRUCTORS
+// #define TEST_APP_DOMAIN_INHERITANCE_CHAIN BTP_INT8_INHERITANCE_CHAIN (TEST_APP_DOMAIN)
 
-// #define TEST_APP_DOMAIN_CONSTRUCTORS (TEST_APP_DOMAIN) INT8_PY_CONSTRUCTORS
 
 #endif

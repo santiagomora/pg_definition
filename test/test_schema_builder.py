@@ -1,5 +1,5 @@
-# import pg_definition.builder.schema as bd
-# import pg_definition as pg
+# import core_pg_bindings.builder.schema as bd
+# import core_pg_bindings as pg
 # import psycopg
 # from typing import\
 #     Generator
@@ -113,7 +113,7 @@
 #     field_2: pg.int4
 # 
 # 
-# class _test(pg.schema):
+# class _test(pg.catalog):
 #     _test_composite = _test_composite
 #     _test_enum = _test_enum
 #     _test_enum_2 = _test_enum_2

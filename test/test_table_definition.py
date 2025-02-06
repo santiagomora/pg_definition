@@ -1,4 +1,4 @@
-import pg_definition as pg
+import core_pg_bindings as pg
 from typing_extensions import\
     Annotated
 from typing import\
