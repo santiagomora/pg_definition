@@ -1,7 +1,5 @@
 #ifndef CORE_PG_BINDINGS_MACROS_REGISTER
 #define CORE_PG_BINDINGS_MACROS_REGISTER
-
-
 #include "core_types/macros/register.hpp"
 
 

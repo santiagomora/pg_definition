@@ -30,7 +30,7 @@ class _function(type, Generic[T]):
         cls, clsname, clsbases, namespace, *, function: Callable[[Any, ...], T]
     ) -> type:
         def __new__(cls, *args) -> T:
-            return function(*args)
+            return function()(*args)
         rettype = super().__new__(
             cls, clsname, clsbases, namespace | {'__new__': __new__}
         )

@@ -7,9 +7,10 @@ set(pybind11_DIR /home/smora/sgs/dev/python/core/venv/lib/python3.12/site-packag
 find_package(pybind11 REQUIRED)
 pybind11_add_module(${PROJECT_NAME}
     wrapper.cpp
-    src/init.cpp
-    src/post.cpp
-    src/author.cpp)
+    src/typing/types.cpp
+    src/api/environment.cpp
+    src/api/post.cpp
+    src/api/author.cpp)
 target_include_directories(${PROJECT_NAME} PRIVATE ./include)
 target_include_directories(${PROJECT_NAME} PRIVATE /home/smora/sgs/dev/python/core/core_pg_bindings/core_pg_bindings/backend/cpp/lib/include)
 

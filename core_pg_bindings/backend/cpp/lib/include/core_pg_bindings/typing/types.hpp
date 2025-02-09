@@ -1,14 +1,14 @@
-#ifndef CORE_PG_BINDINGS_TYPES
-#define CORE_PG_BINDINGS_TYPES
+#ifndef CORE_PG_BINDINGS_TYPING_TYPES
+#define CORE_PG_BINDINGS_TYPING_TYPES
 
 
 #include <pqxx/pqxx>
 #include <pqxx/strconv.hxx>
 
-#include "core_types/compare.hpp"
-#include "core_types/types.hpp"
+#include "core_types/typing/compare.hpp"
+#include "core_types/typing/types.hpp"
 
-#include "core_pg_bindings/macros/definition.hpp"
+#include "core_pg_bindings/typing/definitions.hpp"
 #include "core_pg_bindings/macros/conversions.hpp"
 
 

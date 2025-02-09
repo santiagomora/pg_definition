@@ -1,7 +1,5 @@
 #ifndef CORE_PG_BINDINGS_MACROS_CONVERSIONS
 #define CORE_PG_BINDINGS_MACROS_CONVERSIONS
-
-
 #include "core_types/macros/definition.hpp"
 
 

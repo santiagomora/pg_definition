@@ -4,7 +4,8 @@
 // #include "core_types/macros/overload.hpp"
 #include "core_pg_bindings/macros/register.hpp"
 #include "core_pg_bindings/macros/definition.hpp"
-#include "core_pg_bindings/types.hpp"
+#include "core_pg_bindings/typing/definitions.hpp"
+#include "core_pg_bindings/typing/types.hpp"
 
 
 namespace py = pybind11;

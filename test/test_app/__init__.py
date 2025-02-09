@@ -1,1 +1,1 @@
-from .backend import test_app
+from .backend import test_app as schema
