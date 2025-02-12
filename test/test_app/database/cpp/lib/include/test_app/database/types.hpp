@@ -1,16 +1,15 @@
-#ifndef TEST_APP_DESCRIPTION_TYPES
-#define TEST_APP_DESCRIPTION_TYPES
+#ifndef TEST_APP_DATABASE_TYPES
+#define TEST_APP_DATABASE_TYPES
+#include "core_pg_bindings/typing/definitions.hpp"
 #include "core_pg_bindings/typing/types.hpp"
-#include "test_app/typing/definitions.hpp"
+#include "test_app/database/definitions.hpp"
 
 
 namespace pg = core_pg_bindings;
-// DEBUG clear && g++ -P -E -I/usr/include/boost -I../../../../../../../python/core/core_types/core_types/cpp -I../../../../../../core_pg_bindings/cpp -I../../../../../../../../../dev/usr/include -I./ types.hpp
 
 
-namespace test_app 
+namespace test_app
 {
-
 PG_CPP_TABLE_DECLARATION(TEST_APP_AUTHOR);
 PG_CPP_TABLE_DECLARATION(TEST_APP_AUTHORED);
 PG_CPP_TABLE_DECLARATION(TEST_APP_WITH_TIMESTAMPS);
@@ -19,13 +18,11 @@ PG_CPP_TABLE_DECLARATION(TEST_APP_POST);
 PG_CPP_TABLE_DECLARATION(TEST_APP_COMMENT);
 PG_CPP_TABLE_DECLARATION(TEST_APP_COMMENT_POST);
 PG_CPP_TABLE_DECLARATION(TEST_APP_COMPOSITE_AUTHOR);
-
 };
 
 
 namespace pqxx 
 {
-
 PG_DECLARE_TABLE_CONVERSION(TEST_APP_AUTHOR);
 PG_DECLARE_TABLE_CONVERSION(TEST_APP_AUTHORED);
 PG_DECLARE_TABLE_CONVERSION(TEST_APP_WITH_TIMESTAMPS);
@@ -34,7 +31,6 @@ PG_DECLARE_TABLE_CONVERSION(TEST_APP_POST);
 PG_DECLARE_TABLE_CONVERSION(TEST_APP_COMMENT);
 PG_DECLARE_COMPOSITE_CONVERSION(TEST_APP_COMMENT_POST);
 PG_DECLARE_COMPOSITE_CONVERSION(TEST_APP_COMPOSITE_AUTHOR);
-
 };
 
 

@@ -1,6 +1,4 @@
 import core_types as bt
-from .objects.schema import\
-    schema
 from .objects.sequence import\
     sequence
 from .objects.permission import\
@@ -19,9 +17,11 @@ from typing import\
     Optional
 from .backend import\
     pg_catalog
+from .common.inspection import\
+    FunctionSQLDefinition
 
 
-__all__ = ['builtin', 'catalog', 'composite', 'table', 'enum', 'sequence', 'schema', 'permission', 'this','field','literal','LogicOperand','Operand', 'function', 'Optional', 'Undefined']
+__all__ = ['builtin', 'catalog', 'composite', 'table', 'enum', 'sequence', 'permission', 'this','field','literal','LogicOperand','Operand', 'function', 'Optional', 'Undefined', 'FunctionSQLDefinition']
 
 
 catalog = pg_catalog

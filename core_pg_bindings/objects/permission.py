@@ -44,7 +44,8 @@ permission_definition_flow_builder: DefinitionFlowBuilder = DefinitionFlowBuilde
 # a role groups several permissions. Roles cant inherit from another roles
 class _permission(type):
     def __new__(
-        cls, clsname: str, clsbases: tuple[type], clsdict: dict[str, Any]
+        cls, clsname: str, clsbases: tuple[type],
+        clsdict: dict[str, Any]
     ) -> type:
         rettype: type = super().__new__(
             cls, clsname, clsbases, clsdict

@@ -10,7 +10,7 @@
 namespace core_pg_bindings
 {
 
-template<template <typename> class CT, typename TP>
+template<typename TP, template <typename> class CT = std::vector>
 class ContainedResult_
 {
 public:
@@ -25,6 +25,14 @@ class SingleResult_
 public:
     using Container = TP;
     using Wrapped = TP;
+};
+
+
+class NoResult_
+{
+public:
+    using Container = std::optional<bool>;
+    using Wrapped = bool;
 };
 
 
@@ -57,7 +65,7 @@ public:
 
 
 template<typename T, typename... Args>
-class single_result_query_functor
+class fetch_one_functor
     : public base_functor<typename T::Container, Args...>
 {
 public:
@@ -67,9 +75,11 @@ public:
     {
         if constexpr (HasTPContainerAlias<T>::value)
         {
-            std::optional<std::tuple<typename T::TPContainer>> result = std::apply([&tx, &query](Args&... unpacked){
-                return tx.query01<typename T::TPContainer>(query, {unpacked...});
-            }, args);
+            std::optional<std::tuple<typename T::TPContainer>> result = std::apply(
+                [&tx, &query](Args&... unpacked)
+                {
+                    return tx.query01<typename T::TPContainer>(query, {unpacked...});
+                }, args);
             if (result.has_value())
             {
                 return std::get<0>(result.value());
@@ -78,9 +88,11 @@ public:
         }
         else
         {
-            std::optional<std::tuple<typename T::Container>> result = std::apply([&tx, &query](Args&... unpacked){
-                return tx.query01<typename T::Container>(query, {unpacked...});
-            }, args);
+            std::optional<std::tuple<typename T::Container>> result = std::apply(
+                [&tx, &query](Args&... unpacked)
+                {
+                    return tx.query01<typename T::Container>(query, {unpacked...});
+                }, args);
             if (!result.has_value())
             {
                 throw std::invalid_argument("Could not find required result for given arguments");
@@ -92,7 +104,7 @@ public:
 
 
 template<typename T, typename... Args>
-class multi_result_query_functor
+class fetch_many_functor
     : public base_functor<typename T::Container, Args...>
 {
 public:
@@ -100,19 +112,22 @@ public:
         std::string& query, pqxx::work& tx, std::tuple<Args...>& args
     ) const override
     {
-        // static_assert(!std::is_same_v<T, SingleResult_>, "SingleResult_ type not supported for multi_result_query_functor");
         if constexpr (HasTPContainerAlias<T>::value)
         {
             typename T::Container result;
-            for (auto [p] : std::apply([&tx, &query](Args&... unpacked) {
-                return tx.query<typename T::Wrapped>(query, {unpacked...});
-            }, args))
+            for (auto [p] : std::apply(
+                [&tx, &query](Args&... unpacked) 
+                {
+                    return tx.query<typename T::Wrapped>(query, {unpacked...});
+                }, args)
+            )
             {
                 if (!result.has_value())
                 {
                     result = {p};
-                    std::cout << "culo" << std::endl;
-                } else {
+                }
+                else
+                {
                     result->emplace_back(p);
                 }
             }
@@ -125,14 +140,38 @@ public:
         else
         {
             typename T::Container result = {};
-            for (auto [p] : std::apply([&tx, &query](Args&... unpacked) {
-                return tx.query<typename T::Wrapped>(query, {unpacked...});
-            }, args))
+            for (auto [p] : std::apply(
+                [&tx, &query](Args&... unpacked)
+                {
+                    return tx.query<typename T::Wrapped>(query, {unpacked...});
+                }, args)
+            )
             {
                 result.emplace_back(p);
             }
             return result;
         }
+    }
+};
+
+
+template<typename T, typename... Args>
+class fetch_none_functor
+    : public base_functor<typename T::Container, Args...>
+{
+public:
+    typename T::Container operator() (
+        std::string& query, pqxx::work& tx, std::tuple<Args...>& args
+    ) const override 
+    {
+        static_assert(std::is_same_v<T, NoResult_>, "fetch_none_functor result type must be NoResult_");
+        std::apply(
+            [&tx, &query](Args&... unpacked)
+            {
+                return tx.query01<typename T::Wrapped>(query, {unpacked...});
+            }, args
+        );
+        return std::nullopt;
     }
 };
 

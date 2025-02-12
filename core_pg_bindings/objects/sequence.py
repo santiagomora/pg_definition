@@ -16,6 +16,7 @@ from core_pg_bindings.backend.types import\
     pg_catalog
 from .comment import\
     add_comment
+import inspect
 
 
 __all__ = ['sequence']
@@ -121,7 +122,7 @@ class _SequenceStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = dict()
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['base_type'] = accumulator.get_definition('base_type', 'extraction')
         definition['comment'] = None
         definition['type'] = target

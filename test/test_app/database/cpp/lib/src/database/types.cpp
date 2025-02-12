@@ -1,5 +1,5 @@
-#include "test_app/typing/types.hpp"
 #include "core_pg_bindings/macros/register.hpp"
+#include "test_app/database/types.hpp"
 
 
 PG_PY_TABLE_DECLARE_SUBCLASS_REG(TEST_APP_AUTHOR);

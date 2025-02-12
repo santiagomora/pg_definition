@@ -14,10 +14,10 @@ from .common import\
     Builder,\
     WrapsComponent,\
     SQLSentenceParams,\
-    GeneratesSQLSentence
-from .common import\
-    load_functions_from_file,\
+    GeneratesSQLSentence,\
     Sentence
+from ..inspection.common import\
+    FunctionSQLDefinition
 
 
 __all__ = ['builder']
@@ -995,20 +995,14 @@ class FunctionBuilder(Builder):
         self.parent_builder.append(self.function.execute(params))
         return self.parent_builder
 
-    def load(
-        self, *, from_function_path_alias: str
+    def load_from(
+        self, sql_def: FunctionSQLDefinition
     ) -> 'LoadFunctionBuilder':
-        try:
-            overloads: dict[str, list[str]] = load_functions_from_file(
-                self.function.parent.definition['function_path_alias'][from_function_path_alias],
-                self.function.parent.name, (self.function.name, )
-            )[self.function.name]
-            return LoadFunctionBuilder(
-                self.parent_builder,
-                [LoadedFunction(self.function.name, self.function.parent, fn) for fn in overloads]
-            )
-        except KeyError:
-            raise Exception(f'function {self.function.name} not defined in alias {from_function_path_alias}')
+        overloads: dict[str, str] = sql_def[self.function.name]
+        return LoadFunctionBuilder(
+            self.parent_builder,
+            LoadedFunction(self.function.name, self.function.parent, sql_def[self.function.name])
+        )
 
     def drop(self, overload: dict[str, type]) -> 'SchemaBuilder':
         self.parent_builder.append(self.function.drop(overload))
@@ -1055,18 +1049,19 @@ class LoadedFunction(Component, Creatable, Replaceable):
 
 class LoadFunctionBuilder(list[Any], Builder):
     def __init__(
-        self, parent_builder: 'SchemaBuilder', loaded_functions: list[LoadedFunction]
+        self, parent_builder: 'SchemaBuilder',
+        definition: FunctionSQLDefinition
     ) -> None:
         list.__init__(self)
-        self.loaded_functions = loaded_functions
+        self.loaded_functions = definition
         self.parent_builder = parent_builder
 
-    def create(self, overload) -> 'SchemaBuilder':
+    def create(self, overload: Optional[dict[str, str]] = None) -> 'SchemaBuilder':
         for function in self.loaded_functions:
             self.parent_builder.append(function.create(overload))
         return self.parent_builder
 
-    def create_or_replace(self, overload) -> 'SchemaBuilder':
+    def create_or_replace(self, overload: Optional[dict[str, str]] = None) -> 'SchemaBuilder':
         for function in self.loaded_functions:
             self.parent_builder.append(function.replace(overload))
         return self.parent_builder

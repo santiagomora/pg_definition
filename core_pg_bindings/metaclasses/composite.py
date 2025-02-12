@@ -26,6 +26,7 @@ from ..common.inspection import\
 from ..common.inspection import\
     check_tp_is_domain,\
     check_tp_is_not_domain
+import inspect
 
 
 __all__ = ['composite']
@@ -112,7 +113,7 @@ class _CompositeStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition['type'] = target
         definition['attributes'] = accumulator.get_definition('attributes', 'extraction')
         definition['comment'] = None
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['kind'] = 'composite'
         accumulator.add_definition('final', definition)
 
@@ -158,7 +159,7 @@ class _CompositeDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = dict()
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None

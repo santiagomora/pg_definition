@@ -2,8 +2,8 @@
 #define TEST_APP_API_ARRAY
 #include "core_pg_bindings/execution/environment.hpp"
 #include "core_pg_bindings/execution/invokable.hpp"
-#include "test_app/typing/types.hpp"
-#include "test_app/api/environment.hpp"
+#include "test_app/database/types.hpp"
+#include "test_app/environment.hpp"
 
 
 namespace pg = core_pg_bindings;
@@ -13,9 +13,9 @@ namespace test_app
 {
 
 class test_array
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::ContainedResult_<std::vector, int>>
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor,
+          pg::ContainedResult_<int>>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;

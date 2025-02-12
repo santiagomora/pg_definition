@@ -16,6 +16,7 @@ from ..objects.comment import\
 from ..common.inspection import\
     check_tp_is_domain,\
     check_tp_is_not_domain
+import inspect
 
 
 __all__ = ['builtin', 'compound']
@@ -110,7 +111,7 @@ class _BuiltinStoreFinalDefinition(SingleChoiceDefinitionFlowNode):
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, str] = dict()
         definition['type'] = target
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['kind'] = 'builtin'
         accumulator.add_definition('final', definition)
 
@@ -124,7 +125,7 @@ class _BuiltinDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None

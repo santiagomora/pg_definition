@@ -17,6 +17,7 @@ from ..common.inspection import\
     check_tp_is_domain
 from ..objects.comment import\
     add_comment
+import inspect
 
 
 __all__ = ['enum']
@@ -79,7 +80,7 @@ class _EnumStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition: dict[str, Optional[str]] = dict()
         definition['type'] = target
         definition['comment'] = None
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['kind'] = 'enum'
         definition['members'] = accumulator.get_definition('members', 'extraction')
         accumulator.add_definition('final', definition)
@@ -94,7 +95,7 @@ class _EnumDomainStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Optional[str]] = dict()
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['type'] = target
         definition['base_type'] = target.__bases__[0]
         definition['comment'] = None

@@ -2,9 +2,9 @@
 #define TEST_APP_API_POST
 #include "core_pg_bindings/execution/environment.hpp"
 #include "core_pg_bindings/execution/invokable.hpp"
-#include "test_app/typing/types.hpp"
-#include "test_app/api/environment.hpp"
-#include "test_app/api/author.hpp"
+#include "test_app/database/types.hpp"
+#include "test_app/environment.hpp"
+#include "test_app/author.hpp"
 
 
 namespace pg = core_pg_bindings;
@@ -14,8 +14,8 @@ namespace test_app
 {
 
 class get_post_by_id
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor,
           pg::OptionalResult_<pg::SingleResult_<post>>, const pg::int8&>
 {
 protected:
@@ -24,68 +24,54 @@ protected:
 
 
 class get_post_comments
-    : public pg::invokes_db_function<
-          pg::multi_result_query_functor,
-          pg::ContainedResult_<std::vector, comment>, const post&>
+    : public pg::queries_database_on_transaction<
+          pg::fetch_many_functor,
+          pg::ContainedResult_<comment>, const post&>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;
 public:
-    using pg::invokes_db_function<
-          pg::multi_result_query_functor,
-          pg::ContainedResult_<std::vector, comment>, const post&>::operator();
-    std::optional<std::vector<comment>> operator() (const pg::int8&);
+    using BaseType::operator();
+    std::optional<ResultType> operator() (const pg::int8&);
 };
 
 
 class create_post
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::SingleResult_<post>,
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor, pg::SingleResult_<post>,
           const author&, const pg::text&, const pg::text&>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;
 public:
-    using pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::SingleResult_<post>,
-          const author&, const pg::text&, const pg::text&>::operator();
-    std::optional<post> operator() (const pg::int8&, const pg::text&, const pg::text&);
+    using BaseType::operator();
+    std::optional<ResultType> operator() (const pg::int8&, const pg::text&, const pg::text&);
 };
 
 
 class create_comment
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::SingleResult_<comment>,
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor, pg::SingleResult_<comment>,
           const author&, const post&, const pg::text&>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;
 public:
-    using pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::SingleResult_<comment>,
-          const author&, const post&, const pg::text&>::operator();
-    std::optional<comment> operator() (const pg::int8&, const pg::int8&, const pg::text&);
+    using BaseType::operator();
+    std::optional<ResultType> operator() (const pg::int8&, const pg::int8&, const pg::text&);
 };
 
 
 class as_comment_post
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::SingleResult_<comment_post>,
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor, pg::SingleResult_<comment_post>,
           const post&, const comment&, const pg::text&, const author&>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;
 public:
-    using pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::SingleResult_<comment_post>,
-          const post&, const comment&, const pg::text&, const author&>::operator();
-    std::optional<comment_post> operator() (const pg::int8&, const pg::int8&, const pg::text&, const pg::int8&);
+    using BaseType::operator();
+    std::optional<ResultType> operator() (const pg::int8&, const pg::int8&, const pg::text&, const pg::int8&);
 };
 
 

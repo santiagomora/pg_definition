@@ -46,6 +46,7 @@ import functools
 from pydantic import\
     create_model
 import core_types as bt
+import inspect
 
 
 # KNOWN BUGS
@@ -309,7 +310,7 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
         definition: dict[str, Any] = dict()
-        definition['schema'] = None
+        definition['schema'] = inspect.getmodule(target)
         definition['type'] = target
         definition['bases'] = target._cpp_bases
         definition['comment'] = None

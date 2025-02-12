@@ -1,5 +1,6 @@
 #ifndef CORE_PG_BINDINGS_EXECUTION_ENVIRONMENT
 #define CORE_PG_BINDINGS_EXECUTION_ENVIRONMENT
+#include <string>
 
 
 namespace core_pg_bindings

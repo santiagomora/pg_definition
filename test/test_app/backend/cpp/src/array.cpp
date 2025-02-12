@@ -1,9 +1,9 @@
 #include "core_pg_bindings/typing/types.hpp"
 #include "core_pg_bindings/execution/invokable.hpp"
 
-#include "test_app/typing/types.hpp"
-#include "test_app/api/environment.hpp"
-#include "test_app/api/array.hpp"
+#include "test_app/database/types.hpp"
+#include "test_app/environment.hpp"
+#include "test_app/array.hpp"
 
 
 namespace pg = core_pg_bindings;

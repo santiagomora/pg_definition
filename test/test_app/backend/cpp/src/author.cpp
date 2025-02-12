@@ -1,9 +1,9 @@
 #include "core_pg_bindings/typing/types.hpp"
 #include "core_pg_bindings/execution/invokable.hpp"
 
-#include "test_app/api/author.hpp"
-#include "test_app/typing/types.hpp"
-#include "test_app/api/environment.hpp"
+#include "test_app/author.hpp"
+#include "test_app/database/types.hpp"
+#include "test_app/environment.hpp"
 
 
 namespace pg = core_pg_bindings;
@@ -34,7 +34,7 @@ std::shared_ptr<pg::query_configuration> ta::get_author_posts::query_config () c
 }
 
 
-std::optional<std::vector<ta::post>> ta::get_author_posts::operator() (
+std::optional<ta::get_author_posts::ResultType> ta::get_author_posts::operator() (
     const pg::int8& p_author_id
 )
 {

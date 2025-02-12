@@ -2,8 +2,8 @@
 #define TEST_APP_API_AUTHOR
 #include "core_pg_bindings/execution/environment.hpp"
 #include "core_pg_bindings/execution/invokable.hpp"
-#include "test_app/typing/types.hpp"
-#include "test_app/api/environment.hpp"
+#include "test_app/database/types.hpp"
+#include "test_app/environment.hpp"
 
 
 namespace pg = core_pg_bindings;
@@ -13,8 +13,8 @@ namespace test_app
 {
 
 class create_author
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor,
           pg::SingleResult_<author>>
 {
 protected:
@@ -23,9 +23,10 @@ protected:
 
 
 class get_author_by_id
-    : public pg::invokes_db_function<
-          pg::single_result_query_functor,
-          pg::OptionalResult_<pg::SingleResult_<author>>, const pg::int8&>
+    : public pg::queries_database_on_transaction<
+          pg::fetch_one_functor,
+          pg::OptionalResult_<pg::SingleResult_<author>>,
+          const pg::int8&>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;
@@ -33,17 +34,15 @@ protected:
 
 
 class get_author_posts
-    : public pg::invokes_db_function<
-          pg::multi_result_query_functor,
-          pg::OptionalResult_<pg::ContainedResult_<std::vector, post>>, const author&>
+    : public pg::queries_database_on_transaction<
+          pg::fetch_many_functor,
+          pg::ContainedResult_<post>, const author&>
 {
 protected:
     std::shared_ptr<pg::query_configuration> query_config () const override;
 public:
-    using pg::invokes_db_function<
-          pg::multi_result_query_functor,
-          pg::OptionalResult_<pg::ContainedResult_<std::vector, post>>, const author&>::operator();
-    std::optional<std::vector<post>> operator() (const pg::int8&);
+    using BaseType::operator();
+    std::optional<ResultType> operator() (const pg::int8&);
 };
 
 

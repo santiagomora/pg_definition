@@ -52,13 +52,3 @@ class poster(post_consultation, post_creation, author_consultation):
 
 class commenter(comment_consultation, comment_creation):
     pass
-
-
-class roles:
-    test_app_schema_usage: type[test_app_schema_usage] = test_app_schema_usage
-    comment_consultation: type[comment_consultation] = comment_consultation
-    comment_creation: type[comment_creation] = comment_creation
-    post_consultation: type[post_consultation] = post_consultation
-    post_creation: type[post_creation] = post_creation
-    author_consultation: type[author_consultation] = author_consultation
-    schema_user: type[schema_user] = schema_user
