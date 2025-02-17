@@ -12,8 +12,7 @@ from ..common.flow import\
     execute_definition_flow
 from dataclasses import\
     dataclass
-from core_pg_bindings.backend.types import\
-    pg_catalog
+import core_pg_bindings.pg_catalog as pg_catalog
 from .comment import\
     add_comment
 import inspect

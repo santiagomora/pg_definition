@@ -6,8 +6,10 @@ from typing import\
 from abc import\
     abstractmethod,\
     ABC
-from psycopg import\
-    sql
+from ..common.inspection import\
+    schema_name,\
+    Identifier,\
+    identifier
 
 
 class Component:
@@ -33,7 +35,7 @@ class WrapsComponent:
 
 
 # string con la sentencia, una lista de identificadores, una lista de parametros
-SQLSentenceParams: TypeAlias = tuple[str, list[sql.Identifier],  Union[list[str], dict[str, Any]]]
+SQLSentenceParams: TypeAlias = tuple[str, list[Identifier],  Union[list[str], dict[str, Any]]]
 
 
 class GeneratesSQLSentence(ABC):

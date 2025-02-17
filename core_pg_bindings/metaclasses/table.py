@@ -28,12 +28,6 @@ from .builtin import\
     builtin,\
     compound
 from ..common.inspection import\
-    extract_inherited_fields,\
-    extract_by_instance_type_from_model_fields_info,\
-    aggregate,\
-    tuple_accumulator,\
-    key_by,\
-    extract_first_instance_from_field_metadata,\
     extract_definition_fields
 from ..objects.sequence import\
     sequence
@@ -182,13 +176,14 @@ class table(compound):
             self, target: type['table']
         ) -> list[str]:
             fk: dict[str, Any] = self.foreign_key
-            for ix in range(0, len(self.foreign_key['columns'])):
-                column: FieldInfo = target.model_fields[fk['columns'][ix]]
-                if fk['referenced_columns'][ix] not in fk['references'].model_fields:
-                    raise TypeError(f'Foreign key column "{fk["referenced_columns"][ix]}" must exist in <class \'test_table_definition.test_foreign_key_definition_correctly_extracted.<locals>.test2\'> definition')
-                other_column: FieldInfo = fk['references'].model_fields[fk['referenced_columns'][ix]]
-                if column.annotation != other_column.annotation:
-                    raise TypeError(f'Foreign key column "{fk["columns"][ix]}" type must match with "{fk['referenced_columns'][ix]}" in {fk["references"]} definition')
+            for ix in range(0, len(fk['columns'])):
+                column: dict = target._postgres_definition['columns'][fk['columns'][ix]]
+                if fk['referenced_columns'][ix] not in fk['references']._postgres_definition['columns']:
+                    raise TypeError(f'Foreign key column "{fk["referenced_columns"][ix]}" must exist in "{self.foreign_key['references']}" definition')
+                other_column_tp: type = fk['references']._postgres_definition['columns'][fk['referenced_columns'][ix]]['type']
+                column_tp: type = column['type']
+                if column_tp != other_column_tp:
+                    raise TypeError(f'Foreign key column "{column['name']}" type must match with "{fk['referenced_columns'][ix]}" in {fk["name"]} definition')
 
         def _check_columns_not_constrained_by_foreign_key_definition(self, target: type):
             constrained_columns = set()
@@ -203,7 +198,7 @@ class table(compound):
             definition = target._postgres_definition
             if self.foreign_key['name'] in definition['foreign_keys']:
                 raise TypeError(f"Foreign key \"{self.foreign_key["name"]}\" already defined")
-            invalid_columns: set[str] = set(self.foreign_key['columns']) - set(target.model_fields.keys())
+            invalid_columns: set[str] = set(self.foreign_key['columns']) - set(target._postgres_definition['columns'].keys())
             if len(invalid_columns) > 0:
                 raise TypeError(f'Invalid foreign key definition, columns "{invalid_columns}" not present in table definition')
             self._check_references_column_types(target)
@@ -224,7 +219,7 @@ class table(compound):
             definition = target._postgres_definition
             if self.unique_constraint['name'] in definition['unique_constraints']:
                 raise TypeError(f"Unique constraint \"{self.unique_constraint["name"]}\" already defined")
-            invalid_columns: set[str] = set(self.unique_constraint['columns']) - set(target.model_fields.keys())
+            invalid_columns: set[str] = set(self.unique_constraint['columns']) - set(target._postgres_definition['columns'].keys())
             if len(invalid_columns) > 0:
                 raise TypeError(f'Invalid unique constraint definition, columns "{invalid_columns}" not present in table definition')
             definition['unique_constraints'][self.unique_constraint['name']] = self.unique_constraint
@@ -246,7 +241,7 @@ class table(compound):
             definition = target._postgres_definition
             if self.index['name'] in definition['indexes']:
                 raise TypeError(f"Index \"{self.index["name"]}\" already defined")
-            invalid_columns: set[str] = set(self.index['columns']) - set(target.model_fields.keys())
+            invalid_columns: set[str] = set(self.index['columns']) - set(target._postgres_definition['columns'].keys())
             if len(invalid_columns) > 0:
                 raise TypeError(f'Invalid index definition, columns "{invalid_columns}" not present in table definition')
             definition['indexes'][self.index['name']] = self.index

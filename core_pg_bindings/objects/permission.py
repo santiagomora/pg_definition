@@ -2,8 +2,8 @@ from typing import\
     Any,\
     TypeVar,\
     Generic
-from typing import\
-    Type
+from types import\
+    ModuleType
 from ..common.flow import\
     FlowAccumulator,\
     RootDefinitionFlowNode,\
@@ -15,8 +15,6 @@ from ..common.flow import\
     execute_definition_flow
 from ..common.node import\
     CommonDetermineIfObjectIsDomainNode
-from .schema import\
-    schema
 from .sequence import\
     sequence
 from ..metaclasses.table import\
@@ -27,7 +25,7 @@ from ..metaclasses.composite import\
     composite
 from ..metaclasses.enums import\
     enum
-from .function import\
+from ..metaclasses.function import\
     function
 from .comment import\
     add_comment
@@ -54,14 +52,14 @@ class _permission(type):
         return rettype
 
 
-T = TypeVar('T', table, sequence, schema, function)
+T = TypeVar('T', table, sequence, ModuleType, function)
 
 
 class _Grant(Generic[T]):
-    def __init__(self, tp: Type[T]):
+    def __init__(self, tp: type[T]):
         self.tp_def = tp._postgres_definition
 
-    def __call__(self, target: Type[_permission]):
+    def __call__(self, target: type[_permission]):
         assert issubclass(target, permission)
         definition: dict[str, Any] = target._postgres_definition
         assert 'type_grants' in definition
@@ -83,32 +81,32 @@ class permission(metaclass=_permission):
     class grant:
         class table:
             class select(_Grant[table]):
-                def __init__(self, tp: Type[table]):
+                def __init__(self, tp: type[table]):
                     _Grant.__init__(self, tp)
                     assert isinstance(tp, table)
 
             class insert(_Grant[table]):
-                def __init__(self, tp: Type[table]):
+                def __init__(self, tp: type[table]):
                     _Grant.__init__(self, tp)
                     assert isinstance(tp, table)
 
             class update(_Grant[table]):
-                def __init__(self, tp: Type[table]):
+                def __init__(self, tp: type[table]):
                     _Grant.__init__(self, tp)
                     assert isinstance(tp, table)
 
             class delete(_Grant[table]):
-                def __init__(self, tp: Type[table]):
+                def __init__(self, tp: type[table]):
                     _Grant.__init__(self, tp)
                     assert isinstance(tp, table)
 
             class truncate(_Grant[table]):
-                def __init__(self, tp: Type[table]):
+                def __init__(self, tp: type[table]):
                     _Grant.__init__(self, tp)
                     assert isinstance(tp, table)
 
             class references(_Grant[table]):
-                def __init__(self, tp: Type[table], columns: tuple[str]) -> None:
+                def __init__(self, tp: type[table], columns: tuple[str]) -> None:
                     _Grant.__init__(self, tp)
                     assert isinstance(tp, table)
                     assert len(columns) > 0
@@ -119,41 +117,41 @@ class permission(metaclass=_permission):
                     definition['type_grants'][self.tp_def['type']]['grants'][self.__class__.__name__] = self.columns
 
         class schema:
-            class usage(_Grant[schema]):
-                def __init__(self, tp: Type[schema]):
+            class usage(_Grant[ModuleType]):
+                def __init__(self, tp: type[ModuleType]):
                     _Grant.__init__(self, tp)
-                    assert issubclass(tp, schema)
+                    assert issubclass(tp, ModuleType)
 
-            class create(_Grant[schema]):
-                def __init__(self, tp: Type[schema]):
+            class create(_Grant[ModuleType]):
+                def __init__(self, tp: type[ModuleType]):
                     _Grant.__init__(self, tp)
-                    assert issubclass(tp, schema)
+                    assert issubclass(tp, ModuleType)
 
         class sequence:
             class usage(_Grant[sequence]):
-                def __init__(self, tp: Type[sequence]):
+                def __init__(self, tp: type[sequence]):
                     _Grant.__init__(self, tp)
                     assert issubclass(tp, sequence)
 
             class select(_Grant[sequence]):
-                def __init__(self, tp: Type[sequence]):
+                def __init__(self, tp: type[sequence]):
                     _Grant.__init__(self, tp)
                     assert issubclass(tp, sequence)
 
             class update(_Grant[sequence]):
-                def __init__(self, tp: Type[sequence]):
+                def __init__(self, tp: type[sequence]):
                     _Grant.__init__(self, tp)
                     assert issubclass(tp, sequence)
 
         class function:
             class execute(_Grant[function]):
-                def __init__(self, tp: Type[function]):
+                def __init__(self, tp: type[function]):
                     _Grant.__init__(self, tp)
                     assert issubclass(tp, function)
 
         class type:
             class usage(_Grant[sequence]):
-                def __init__(self, tp: Type[sequence]):
+                def __init__(self, tp: type[sequence]):
                     _Grant.__init__(self, tp)
                     assert issubclass(tp, composite) or issubclass(tp, enum) or isinstance(tp, builtin)
 
@@ -247,7 +245,7 @@ class _RoleStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition: dict[str, Any] = dict()
         definition['type'] = target
         definition['comment'] = None
-        definition['schema'] = None
+        definition['ModuleType'] = None
         definition['kind'] = 'role'
         definition['permissions'] = tuple(target.__bases__)
         accumulator.add_definition('final', definition)

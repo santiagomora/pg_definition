@@ -1,5 +1,5 @@
 import core_pg_bindings as pg
-import test_app.backend.cpp.wrapper as tw
+import test_app.database.cpp.module.wrapper as tw
 
 
 # NOTE TYPES
@@ -59,32 +59,27 @@ class composite_author(tw.composite_author, metaclass=pg.composite):
     pass
 
 
-func_definitions = pg.FunctionSQLDefinition(__name__)
-with open(f'{__file__}/sql/functions.sql') as f:
-    func_definitions.read(f)
-
-
 # NOTE FUNCTIONS
-class create_author(pg.function[pg.Optional[author]], defined_in=func_definitions):
+class create_author(tw.create_author, metaclass=pg.function):
     pass
 
 
-class get_author_posts(pg.function[list[post]], defined_in=func_definitions):
+class get_author_posts(tw.get_author_posts, metaclass=pg.function):
     pass
 
 
-class get_post_comments(pg.function[list[comment]], defined_in=func_definitions):
+class get_post_comments(tw.get_post_comments, metaclass=pg.function):
     pass
 
 
-class create_post(pg.function[pg.Optional[post]], defined_in=func_definitions):
+class create_post(tw.create_post, metaclass=pg.function):
     pass
 
 
-class create_comment(pg.function[pg.Optional[comment]], defined_in=func_definitions):
+class create_comment(tw.create_comment, metaclass=pg.function):
     pass
 
 
-class as_comment_post(pg.function[pg.Optional[comment_post]], defined_in=func_definitions):
+class as_comment_post(tw.as_comment_post, metaclass=pg.function):
     pass
 

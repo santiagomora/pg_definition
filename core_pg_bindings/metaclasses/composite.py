@@ -22,8 +22,6 @@ from ..common.node import\
     CommonDetermineIfTargetIsDomainNode
 from ..common.inspection import\
     extract_definition_fields,\
-    extract_first_instance_from_field_metadata
-from ..common.inspection import\
     check_tp_is_domain,\
     check_tp_is_not_domain
 import inspect

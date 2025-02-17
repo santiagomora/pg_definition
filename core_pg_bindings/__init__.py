@@ -1,9 +1,10 @@
+from . import pg_catalog
 import core_types as bt
 from .objects.sequence import\
     sequence
 from .objects.permission import\
     permission
-from .objects.function import\
+from .metaclasses.function import\
     function
 from .metaclasses.composite import\
     composite
@@ -15,13 +16,11 @@ from .metaclasses.builtin import\
     builtin
 from typing import\
     Optional
-from .backend import\
-    pg_catalog
 from .common.inspection import\
-    FunctionSQLDefinition
+    load_functions_from_file
 
 
-__all__ = ['builtin', 'catalog', 'composite', 'table', 'enum', 'sequence', 'permission', 'this','field','literal','LogicOperand','Operand', 'function', 'Optional', 'Undefined', 'FunctionSQLDefinition']
+__all__ = ['builtin', 'catalog', 'composite', 'table', 'enum', 'sequence', 'permission', 'this','field','literal','LogicOperand','Operand', 'function', 'Optional', 'Undefined', 'load_functions_from_file']
 
 
 catalog = pg_catalog

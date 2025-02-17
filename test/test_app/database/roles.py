@@ -1,4 +1,4 @@
-from .schema import test_app
+from . import test_app
 import core_pg_bindings as pg
 
 
