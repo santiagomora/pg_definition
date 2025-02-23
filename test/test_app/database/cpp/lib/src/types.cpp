@@ -1,5 +1,5 @@
 #include "core_pg_bindings/macros/register.hpp"
-#include "test_app/database/typing/namespace.hpp"
+#include "test_app/database/interface/types.hpp"
 
 
 // NOTE TYPES

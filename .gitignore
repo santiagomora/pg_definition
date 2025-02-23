@@ -12,3 +12,4 @@ commit.msg
 pyvenv.cfg
 *.kate-swp
 venv
+build

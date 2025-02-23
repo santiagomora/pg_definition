@@ -719,8 +719,14 @@ class EnumValueBuilder(Builder):
 
 class Enum(Component, Renamable, Alterable, Droppable, Creatable):
     class Create(Create):
+        def __init__(self, component: Component, values: tuple[str, ...]) -> None:
+            super().__init__(component)
+            self.values = values
+
         def sql_sentence_params(self) -> SQLSentenceParams:
-            return ('CREATE TYPE {}.{} AS ENUM ();', [identifier(self.component.parent.name), identifier(self.component.name)], [], )
+            placeholders: list[str] = ", ".join(['%s' for _ in self.values])
+            names: list[str] = [name for name in self.values]
+            return ('CREATE TYPE {}.{} AS ENUM ' + f'({placeholders});', [identifier(self.component.parent.name), identifier(self.component.name)], names, )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Enum.Drop\
@@ -753,6 +759,9 @@ class Enum(Component, Renamable, Alterable, Droppable, Creatable):
                 and self.old_name == other.component.name\
                 and other.old_name == self.component.name
 
+    def create(self, values: tuple[str, ...]) -> Create:
+        return self.__class__.Create(self, values)
+
 
 class EnumBuilder(Builder):
     def __init__(
@@ -770,8 +779,8 @@ class EnumBuilder(Builder):
         self.parent_builder.append(t.alter(self.enums.rename_from(old_name)))
         return self.parent_builder
 
-    def create(self) -> Self:
-        self.parent_builder.append(self.enums.create())
+    def create(self, *values: str) -> Self:
+        self.parent_builder.append(self.enums.create(values))
         return self.parent_builder
 
     def drop(self) -> Self:

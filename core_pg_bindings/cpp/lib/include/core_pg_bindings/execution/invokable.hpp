@@ -2,8 +2,12 @@
 #define CORE_PG_BINDINGS_EXECUTION_INVOKABLE
 #include <exception>
 #include <pqxx/pqxx>
+#include "core_types/typing/backend.hpp"
 #include "core_pg_bindings/execution/environment.hpp"
 #include "core_pg_bindings/execution/functors.hpp"
+
+
+namespace ct = core_types;
 
 
 namespace core_pg_bindings
@@ -15,19 +19,18 @@ struct queries_database_on_transaction
 {
     using ResultType = typename T::Container;
     using BaseType = queries_database_on_transaction<FT, T, Args...>;
-    ResultType operator() (pqxx::work& tx, Args... args)
+    ResultType operator() (pqxx::work& tx, Args&... args)
     {
         ResultType v_res;
         try
         {
             FT<T, Args...> ft;
-            std::tuple<Args&...> arguments  = std::make_tuple<Args&...>(args...);
-            v_res = ft(tx,  query(), arguments);
+            v_res = ft(tx,  query(), std::make_tuple(args...));
         }
         catch (std::exception const &e) 
         {
-            // uncaught exception, log then throw
             std::cerr << e.what() << std::endl;
+            std::cerr << "CALLED QUERY: " << query() << "\nWITH PARAMETERS: " << ct::tp_to_string(std::make_tuple(args...)) << std::endl;
             throw e;
         }
         return v_res;

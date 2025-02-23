@@ -34,7 +34,7 @@
 
 
 #define PG_INVOKABLE_REGISTER_SUBCLASS_REG(FUNC_DEF)\
-core_types::py_subclass_registry<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))> T_QUALNAME(T_NAMETUPLE(FUNC_DEF))::subclass_registry = core_types::py_subclass_registry<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))>()
+core_types::interface::py_subclass_registry<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))> T_QUALNAME(T_NAMETUPLE(FUNC_DEF))::subclass_registry = core_types::interface::py_subclass_registry<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))>()
 
 
 #define PG_INVOKABLE_REGISTER(FUNC_DEF, m)\

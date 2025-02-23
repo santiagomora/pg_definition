@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools", "wheel"]  # Add other build dependencies if needed
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "core_pg_bindings"
+version = "1.0.0a0"
+description = "Core C++ type wrappers"
+readme = "README.md"
+license = { text = "GPL-3.0" }
+keywords = ["test", "cmake", "extension"]
+requires-python = ">=3.12"
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Natural Language :: English",
+    "Programming Language :: C",
+    "Programming Language :: C++",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython"
+]
+dependencies = [
+    "annotated-types==0.6.0",
+    # "base_types @ git+ssh://git@github.com/santiagomora/base_types.git@f54a1b72164a9af5e1c4cefbded10f634de3bf7f#egg=base_types",
+    "compress-pickle==2.1.0",
+    "lz4==4.3.3",
+    "mypy==1.8.0",
+    "mypy-extensions==1.0.0",
+    "packaging==24.1",
+    "pluggy==1.5.0",
+    "psycopg==3.1.17",
+    "pybind11==2.13.6",
+    "pydantic==2.10.6",
+    "pydantic_core==2.27.2",
+    "pytest==8.2.2",
+    "semver==3.0.2",
+    "setuptools==69.0.3",
+    "typing_extensions==4.12.2"
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+zip-safe = false

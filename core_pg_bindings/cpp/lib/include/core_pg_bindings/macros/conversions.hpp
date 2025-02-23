@@ -1,8 +1,11 @@
 #ifndef CORE_PG_BINDINGS_MACROS_CONVERSIONS
 #define CORE_PG_BINDINGS_MACROS_CONVERSIONS
 #include "core_types/macros/declaration.hpp"
+#include "core_types/typing/backend.hpp"
 
 
+
+// TODO some conversions still depends on interface type to be parsed from string, we need to change this
 #define PG_TYPEDEF_CONVERSION(TYPE_DEF, BUF_SIZE)\
 template<>\
 std::string const type_name<T_QUALNAME(T_NAMETUPLE(TYPE_DEF))>{BOOST_PP_STRINGIZE(T_QUALNAME(T_NAMETUPLE(TYPE_DEF)))};\
@@ -13,10 +16,10 @@ struct string_traits<T_QUALNAME(T_NAMETUPLE(TYPE_DEF))> {\
     static constexpr bool converts_to_string {true};\
     static constexpr bool converts_from_string {true};\
     static zview to_buf (char *begin, char *end, const T_QUALNAME(T_NAMETUPLE(TYPE_DEF)) &value) {\
-        return string_traits<std::string>::to_buf(begin, end, value.to_string());\
+        return string_traits<std::string>::to_buf(begin, end, core_types::tp_to_string(value));\
     }\
     static char *into_buf (char *begin, char *end, const T_QUALNAME(T_NAMETUPLE(TYPE_DEF)) &value) {\
-        std::string as_string = value.to_string();\
+        std::string as_string = core_types::tp_to_string(value);\
         if (std::cmp_greater_equal(std::size(as_string), end - begin))\
             throw conversion_error{"Could not convert string to string: too long for buffer."};\
         as_string.copy(begin, std::size(as_string));\
@@ -26,42 +29,18 @@ struct string_traits<T_QUALNAME(T_NAMETUPLE(TYPE_DEF))> {\
     static std::size_t size_buffer (\
         const T_QUALNAME(T_NAMETUPLE(TYPE_DEF)) BOOST_PP_IF(BOOST_PP_IS_EMPTY(BUF_SIZE), &value, BOOST_PP_EMPTY())\
     ) noexcept {\
-        return BOOST_PP_IF(\
+		return BOOST_PP_IF(\
             BOOST_PP_IS_EMPTY(BUF_SIZE),\
-            string_traits<T_BASE_PRIMITIVE(TYPE_DEF)>::size_buffer(value.value()),\
+            string_traits<T_QUALNAME(T_NAMETUPLE(TYPE_DEF))>::size_buffer(value),\
             BUF_SIZE);\
     }\
     static T_QUALNAME(T_NAMETUPLE(TYPE_DEF)) from_string (std::string_view text) {\
-        return T_QUALNAME(T_NAMETUPLE(TYPE_DEF))(string_traits<std::string>::from_string(text));\
+        return T_QUALNAME(T_IFACE_TYPE(TYPE_DEF))(string_traits<std::string>::from_string(text)).value();\
     }\
 }
 
 
 #define PG_ENUMDEF_CONVERSION(ENUM_DEF)\
-template<>\
-std::string const type_name<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)>{BOOST_PP_STRINGIZE(ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF))};\
-template<>\
-struct nullness<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)> : pqxx::no_null<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)> {};\
-template<>\
-struct string_traits<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)> {\
-    static constexpr bool converts_to_string {true};\
-    static constexpr bool converts_from_string {true};\
-    static zview to_buf (char *begin, char *end, const ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF) &value) {\
-        return string_traits<std::string>::to_buf(begin, end, T_QUALNAME(T_NAMETUPLE(ENUM_DEF))::static_to_string(value));\
-    }\
-    static char *into_buf (char *begin, char *end, const ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF) &value) {\
-        return string_traits<std::string>::into_buf(begin, end, T_QUALNAME(T_NAMETUPLE(ENUM_DEF))::static_to_string(value));\
-    }\
-    static std::size_t size_buffer (\
-        const ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF) &value\
-    ) noexcept {\
-        return string_traits<std::string>::size_buffer(T_QUALNAME(T_NAMETUPLE(ENUM_DEF))::static_to_string(value));\
-    }\
-    static ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF) from_string (std::string_view text) {\
-        BOOST_PP_SEQ_FOR_EACH_I(ED_FROM_STRING_CASE, (ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF), text), ENUM_MEMBERS(ENUM_DEF))\
-        throw pqxx::conversion_error(std::string("could not convert ") + static_cast<std::string>(text) + " to enum " + BOOST_PP_STRINGIZE(ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)));\
-    }\
-};\
 template<>\
 std::string const type_name<T_QUALNAME(T_NAMETUPLE(ENUM_DEF))>{BOOST_PP_STRINGIZE(T_QUALNAME(T_NAMETUPLE(ENUM_DEF)))};\
 template<>\
@@ -71,20 +50,21 @@ struct string_traits<T_QUALNAME(T_NAMETUPLE(ENUM_DEF))> {\
     static constexpr bool converts_to_string {true};\
     static constexpr bool converts_from_string {true};\
     static zview to_buf (char *begin, char *end, const T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) &value) {\
-        return string_traits<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)>::to_buf(begin, end, value.value());\
+        return string_traits<std::string>::to_buf(begin, end, T_QUALNAME(T_IFACE_TYPE(ENUM_DEF))::static_to_string(value));\
     }\
     static char *into_buf (char *begin, char *end, const T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) &value) {\
-        return string_traits<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)>::into_buf(begin, end, value.value());\
+        return string_traits<std::string>::into_buf(begin, end, T_QUALNAME(T_IFACE_TYPE(ENUM_DEF))::static_to_string(value));\
     }\
     static std::size_t size_buffer (\
         const T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) &value\
     ) noexcept {\
-        return string_traits<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)>::size_buffer(value.value());\
+        return string_traits<std::string>::size_buffer(T_QUALNAME(T_IFACE_TYPE(ENUM_DEF))::static_to_string(value));\
     }\
     static T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) from_string (std::string_view text) {\
-        return T_QUALNAME(T_NAMETUPLE(ENUM_DEF))(string_traits<ENUM_QUALIFIED_UNDERLYING_CLASS(ENUM_DEF)>::from_string(text));\
+        BOOST_PP_SEQ_FOR_EACH_I(ED_FROM_STRING_CASE, (T_QUALNAME(T_NAMETUPLE(ENUM_DEF)), text), T_MEMBERS(ENUM_DEF))\
+        throw pqxx::conversion_error(std::string("could not convert ") + static_cast<std::string>(text) + " to enum " + BOOST_PP_STRINGIZE(T_QUALNAME(T_NAMETUPLE(ENUM_DEF))));\
     }\
-}
+};
 
 
 #define PG_CLASSDEF_CONVERSION(CLASS_DEF)\
