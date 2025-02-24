@@ -1,5 +1,7 @@
 #ifndef CORE_PG_BINDINGS_MACROS_REGISTER
 #define CORE_PG_BINDINGS_MACROS_REGISTER
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "core_types/macros/register/descriptive.hpp"
 #include "core_types/macros/register/instanceable.hpp"
 
@@ -33,23 +35,10 @@
 #define PG_TABLE_REGISTER_SUBCLASS_REG           CT_CLASSDEF_REGISTER_SUBCLASS_REG
 
 
-#define PG_INVOKABLE_REGISTER_SUBCLASS_REG(FUNC_DEF)\
-core_types::interface::py_subclass_registry<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))> T_QUALNAME(T_NAMETUPLE(FUNC_DEF))::subclass_registry = core_types::interface::py_subclass_registry<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))>()
-
-
 #define PG_INVOKABLE_REGISTER(FUNC_DEF, m)\
-py::class_<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))>(m, BOOST_PP_STRINGIZE(T_NAME(T_NAMETUPLE(FUNC_DEF))))\
+pybind11::class_<T_QUALNAME(T_NAMETUPLE(FUNC_DEF))>(m, BOOST_PP_STRINGIZE(T_NAME(T_NAMETUPLE(FUNC_DEF))))\
 .def_property_readonly_static("_cpp_overloads", [](const py::object&) -> std::vector<std::string_view> {\
     return T_QUALNAME(T_NAMETUPLE(FUNC_DEF))::overloads;\
-})\
-.def_property_readonly_static("qualified_name", [](py::object&){\
-    return BOOST_PP_STRINGIZE(T_NAMESPACE(T_NAMETUPLE(FUNC_DEF)).T_NAME(T_NAMETUPLE(FUNC_DEF)));\
-})\
-.def_static("set_py_cls", [](std::string& subclass_name, py::object& cls){\
-    return T_QUALNAME(T_NAMETUPLE(FUNC_DEF))::subclass_registry.set_py_cls(subclass_name, cls);\
-})\
-.def_static("get_py_cls", [](std::string& subclass_name){\
-    return T_QUALNAME(T_NAMETUPLE(FUNC_DEF))::subclass_registry.get_py_cls(subclass_name);\
 })
 
 

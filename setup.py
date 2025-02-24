@@ -52,9 +52,6 @@ cmake_extensions = [
 ]
 
 
-HEADERS = []
-
-
 class BuildCMakeExt(build_ext):
     """
     Builds using cmake instead of the python setuptools implicit build
@@ -64,6 +61,7 @@ class BuildCMakeExt(build_ext):
         """
         Perform build_cmake before doing the 'normal' stuff
         """
+        self.distribution.data_files = []
         for extension in self.extensions:
             print(f"[BUILD] \"{extension.name}\": Building", file=sys.stdout)
             self.build_cmake(extension)
@@ -156,17 +154,17 @@ class InstallCMakeLibs(install_lib):
                 final_path = os.path.join(final_path, libname)
                 dest_path = os.path.join(build_dir, libname)
                 shutil.move(dest_path, final_path)
-            install_files.append(final_path)
+            self.distribution.data_files.append(final_path)
             include_path = os.path.join(os.path.join(lib_dir, ext.cmake_lists_path), 'include')
             if os.path.exists(include_path):
                 print(f"[INSTALL_LIBS] \"{ext.name}\": Copying \"{include_path}\" contents into \"{INCLUDE_DEST}\"", file=sys.stdout)
                 for filename in glob.iglob(include_path + '/**/*', recursive=True):
                     dst = filename.replace(include_path, INCLUDE_DEST)
+                    self.distribution.data_files.append(os.path.abspath(dst))
                     if os.path.isdir(filename):
                         os.makedirs(dst, exist_ok=True)
                     else:
-                        HEADERS.append(os.path.abspath(dst))
-                        shutil.copy(filename, dst)
+                        self.copy_file(filename, dst)
                 shutil.rmtree(include_path, ignore_errors=True)
             print(f"[INSTALL_LIBS] \"{ext.name}\": Moved \"{dest_path}\" -> \"{final_path}\"", file=sys.stdout)
         # Mark the libs for installation, adding them to 
@@ -174,7 +172,6 @@ class InstallCMakeLibs(install_lib):
         # writer appends them to installed-files.txt in the package's egg-info
         # shutil.rmtree(build_dir, ignore_errors=True)
         print(f"[INSTALL_LIBS] \"{self.distribution.extension.name}\": Registering install files", file=sys.stdout)
-        self.distribution.data_files = install_files + HEADERS
         # Must be forced to run after adding the libs to data_files
         self.distribution.run_command("install_data")
         super().run()
@@ -239,7 +236,6 @@ class InstallCMakeLibsData(install_data):
 setup(
     packages=find_packages(),
     ext_modules=cmake_extensions,
-    data_files=HEADERS,
     cmdclass={
         'build_ext': BuildCMakeExt,
         'install_lib': InstallCMakeLibs,

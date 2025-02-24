@@ -1,8 +1,8 @@
 #ifndef TEST_APP_BACKEND_FUNCTIONS
 #define TEST_APP_BACKEND_FUNCTIONS
-#include "test_app/database/queries.hpp"
-#include "test_app/database/types.hpp"
-#include "core_types/typing/types.hpp"
+#include "test_app/database/interface/queries.hpp"
+#include "test_app/database/interface/types.hpp"
+#include "core_types/typing/backend.hpp"
 
 
 namespace ct = core_types;

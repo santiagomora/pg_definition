@@ -6,7 +6,6 @@ namespace ta = test_app::database;
 
 
 // NOTE FUNCTIONS
-PG_INVOKABLE_REGISTER_SUBCLASS_REG(TEST_APP_DB_GET_AUTHOR_POSTS);
 std::vector<std::string_view> ta::get_author_posts::overloads = {
 R"###(
 CREATE OR REPLACE FUNCTION get_author_posts(
@@ -23,7 +22,6 @@ $$ LANGUAGE plpgsql;
 };
 
 
-PG_INVOKABLE_REGISTER_SUBCLASS_REG(TEST_APP_DB_CREATE_POST);
 std::vector<std::string_view> ta::create_post::overloads = {
 R"###(
 CREATE OR REPLACE FUNCTION create_post(
@@ -44,7 +42,6 @@ $$ LANGUAGE plpgsql;
 };
 
 
-PG_INVOKABLE_REGISTER_SUBCLASS_REG(TEST_APP_DB_CREATE_COMMENT);
 std::vector<std::string_view> ta::create_comment::overloads = {
 R"###(
 CREATE OR REPLACE FUNCTION create_comment(
@@ -65,7 +62,6 @@ $$ LANGUAGE plpgsql;
 };
 
 
-PG_INVOKABLE_REGISTER_SUBCLASS_REG(TEST_APP_DB_GET_POST_COMMENTS);
 std::vector<std::string_view> ta::get_post_comments::overloads = {
 R"###(
 CREATE OR REPLACE FUNCTION get_post_comments(
@@ -82,7 +78,6 @@ $$ LANGUAGE plpgsql;
 };
 
 
-PG_INVOKABLE_REGISTER_SUBCLASS_REG(TEST_APP_DB_AS_COMMENT_POST);
 std::vector<std::string_view> ta::as_comment_post::overloads = {
 R"###(
 CREATE OR REPLACE FUNCTION as_comment_post(
@@ -99,7 +94,6 @@ $$ LANGUAGE plpgsql;
 };
 
 
-PG_INVOKABLE_REGISTER_SUBCLASS_REG(TEST_APP_DB_CREATE_AUTHOR);
 std::vector<std::string_view> ta::create_author::overloads = {
 R"###(
 CREATE OR REPLACE FUNCTION create_author()
