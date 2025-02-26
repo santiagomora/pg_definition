@@ -8,7 +8,7 @@
 #include "core_pg_bindings/execution/functors.hpp"
 
 
-namespace ct_i = core_types::interface;
+namespace ct = core_types;
 
 
 namespace core_pg_bindings
@@ -31,8 +31,7 @@ struct queries_database_on_transaction
         catch (std::exception const &e) 
         {
             std::cerr << e.what() << std::endl;
-            std::cerr << "CALLED QUERY: " << query();
-            // << "\nWITH PARAMETERS: " << ct_i::tp_to_string(std::make_tuple(args...)) << std::endl;
+            std::cerr << "CALLED QUERY: " << query() << "\nWITH PARAMETERS: " << ct::tp_to_string(std::make_tuple(args...)) << std::endl;
             throw e;
         }
         return v_res;

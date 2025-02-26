@@ -2,7 +2,7 @@
 
 
 namespace ct = core_types;
-namespace db = test_app_db;
+namespace db = test_app::database;
 namespace ta = test_app;
 
 

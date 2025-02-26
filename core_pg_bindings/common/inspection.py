@@ -137,10 +137,10 @@ def schema_name(schema: ModuleType) -> str:
 
 
 def qualified_overload(
-    schema: ModuleType, overload: str
+    schema: str, overload: str
 ) -> str:
     func_name = re.sub(r'\(.*', '', overload.split("$$")[0], flags=re.DOTALL)
     func_name = re.sub(r'\s*CREATE\s+OR\s+REPLACE\s+FUNCTION\s*', '', func_name).strip()
-    func_name = f'CREATE OR REPLACE FUNCTION {schema_name(schema)}.{func_name} '
+    func_name = f'CREATE OR REPLACE FUNCTION {schema}.{func_name} '
     return re.sub(r'^.*CREATE\s+OR\s+REPLACE\s+FUNCTION.*?(?=\()', func_name, overload, flags=re.DOTALL)
 

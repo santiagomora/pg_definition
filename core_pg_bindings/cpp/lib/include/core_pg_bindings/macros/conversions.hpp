@@ -50,15 +50,15 @@ struct string_traits<T_QUALNAME(T_NAMETUPLE(ENUM_DEF))> {\
     static constexpr bool converts_to_string {true};\
     static constexpr bool converts_from_string {true};\
     static zview to_buf (char *begin, char *end, const T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) &value) {\
-        return string_traits<std::string>::to_buf(begin, end, T_QUALNAME(T_IFACE_TYPE(ENUM_DEF))::static_to_string(value));\
+        return string_traits<std::string>::to_buf(begin, end, core_types::tp_to_string(value));\
     }\
     static char *into_buf (char *begin, char *end, const T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) &value) {\
-        return string_traits<std::string>::into_buf(begin, end, T_QUALNAME(T_IFACE_TYPE(ENUM_DEF))::static_to_string(value));\
+        return string_traits<std::string>::into_buf(begin, end, core_types::tp_to_string(value));\
     }\
     static std::size_t size_buffer (\
         const T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) &value\
     ) noexcept {\
-        return string_traits<std::string>::size_buffer(T_QUALNAME(T_IFACE_TYPE(ENUM_DEF))::static_to_string(value));\
+        return string_traits<std::string>::size_buffer(core_types::tp_to_string(value));\
     }\
     static T_QUALNAME(T_NAMETUPLE(ENUM_DEF)) from_string (std::string_view text) {\
         BOOST_PP_SEQ_FOR_EACH_I(ED_FROM_STRING_CASE, (T_QUALNAME(T_NAMETUPLE(ENUM_DEF)), text), T_MEMBERS(ENUM_DEF))\

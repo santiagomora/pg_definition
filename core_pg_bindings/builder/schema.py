@@ -17,8 +17,7 @@ from .common import\
     WrapsComponent,\
     SQLSentenceParams,\
     GeneratesSQLSentence,\
-    Sentence,\
-    schema_name
+    Sentence
 from ..common.inspection import\
     qualified_overload
 from .common import Identifier, identifier
@@ -136,7 +135,7 @@ class Executable:
 class Type(Component, Settable):
     class Set(Set):
         def sql_sentence_params(self) -> GeneratesSQLSentence:
-            return ('TYPE {}.{};', [identifier(schema_name(self.component.definition['schema'])), identifier(self.component.definition['type'].__name__)], [])
+            return ('TYPE {}.{};', [identifier(self.component.definition['schema']), identifier(self.component.definition['type'])], [])
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Type.Set\
@@ -231,7 +230,7 @@ class ForeignKey(Constraint):
     class Add(Constraint.Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
             columns: list[str] = [identifier(col) for col in self.component.definition['columns']]
-            references: list[str] = [identifier(schema_name(self.component.definition['references']._postgres_definition['schema'])), identifier(self.component.definition['references'].__name__)]
+            references: list[str] = [identifier(self.component.definition['references']['schema']), identifier(self.component.definition['references']['type'])]
             referenced_columns: list[str] = [identifier(col) for col in self.component.definition['referenced_columns']]
             placeholders: list[str] = ['{}']*len(columns)
             return ('ADD CONSTRAINT {} FOREIGN KEY ' + f'({", ".join(placeholders)}) REFERENCES' + " {}.{} " + f'({", ".join(placeholders)});', [identifier(self.component.name)] + columns + references + referenced_columns, [], )
@@ -282,12 +281,13 @@ class Expression(Component, Droppable, Addable):
 class Default(Component, Droppable, Settable):
     class Set(Set):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            if isinstance(self.component.definition, pg.Operand):
-                return ('SET DEFAULT EXPRESSION {};', [sql.SQL(str(self.component.definition))], [], )
-            elif isinstance(self.component.definition, pg.sequence.nextval):
-                seq_def: dict[str, Any] = self.component.definition.seq._postgres_definition
-                return ('SET DEFAULT nextval(%s);', [], [f'{schema_name(seq_def["schema"])}.{self.component.definition.seq.__name__}'], )
+            if self.component.definition['type'] == 'operand':
+                return ('SET DEFAULT EXPRESSION {};', [sql.SQL(str(self.component.definition['value']))], [], )
+            elif self.component.definition['type'] == 'sequence_nextval':
+                seq_def: dict[str, Any] = self.component.definition
+                return ('SET DEFAULT nextval(%s);', [], [f'{seq_def["schema"]}.{seq_def["name"]}'], )
             else:
+                # FIXME dont know what this does
                 return ('SET DEFAULT {};', [sql.SQL(str(self.component.definition))], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
@@ -325,9 +325,9 @@ class DefaultBuilder(Builder):
 class Column(Component, Alterable, Droppable, Addable, Renamable):
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            tdef: dict[str, Any] = self.component.definition["type"]._postgres_definition
+            tdef: dict[str, Any] = self.component.definition["type"]
             nullable: str = 'NOT NULL;' if self.component.definition['required'] else 'DEFAULT NULL;';
-            return ('ADD COLUMN {} {}.{} ' + nullable, [identifier(self.component.name), identifier(schema_name(tdef['schema'])), identifier(tdef['type'].__name__)], [], )
+            return ('ADD COLUMN {} {}.{} ' + nullable, [identifier(self.component.name), identifier(tdef['schema']), identifier(tdef['type'])], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Column.Drop\
@@ -375,7 +375,7 @@ class TableColumnBuilder(Builder):
             lambda column, change: column.parent.alter(column.alter(change)))
 
     def type(self) -> TypeBuilder:
-        tp: Type = Type('type', self.column, self.column.definition['type']._postgres_definition)
+        tp: Type = Type('type', self.column, self.column.definition['type'])
         return TypeBuilder(
             self.parent_builder, tp,
             lambda column, change: column.parent.alter(column.alter(change)))
@@ -408,7 +408,7 @@ class Index(Component, Droppable, Renamable, Creatable, Alterable):
             placeholders: list[str] = ['{}']*len(columns)
             unique: bool = self.component.definition['unique']
             tp: pg.index_type = str(self.component.definition['type'].value).upper()
-            schema = schema_name(self.component.parent.definition['schema'])
+            schema = self.component.parent.definition['schema']
             return (f'CREATE{" UNIQUE" if unique else ""} ' + 'INDEX {} ON {}.{} USING ' + tp + f' ({", ".join(placeholders)});', [identifier(self.component.name), identifier(schema), identifier(self.component.parent.name)] + columns, [])
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
@@ -472,8 +472,7 @@ class Table(Component, Droppable, Creatable, Alterable, Renamable):
             placeholders: list[str] = []
             bases: Optional[list[type]] = list(self.component.definition['bases'])
             for base in [] if bases is None else bases:
-                definition: dict[str, Any] = base._postgres_definition
-                bases += [identifier(schema_name(definition['schema'])), identifier(definition['type'].__name__)]
+                bases += [identifier(base['schema']), identifier(base['type'])]
                 placeholders += ['{}.{}']
             return ('CREATE TABLE {}.{} () INHERITS ' + f'({", ".join(placeholders)});' if len(bases) > 0 else 'CREATE TABLE {}.{} ();', [identifier(self.component.parent.name), identifier(self.component.name)] + bases, [])
 
@@ -568,8 +567,8 @@ class Attribute(Component, Renamable, Addable, Droppable, Alterable):
 
     class Add(Add):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            tdef: dict[str, Any] = self.component.definition["type"]._postgres_definition
-            return ('ADD ATTRIBUTE {} {}.{};', [identifier(self.component.name), identifier(schema_name(tdef['schema'])), identifier(tdef['type'].__name__)], [], )
+            tdef: dict[str, Any] = self.component.definition["type"]
+            return ('ADD ATTRIBUTE {} {}.{};', [identifier(self.component.name), identifier(tdef['schema']), identifier(tdef['type'])], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Attribute.Drop\
@@ -601,7 +600,7 @@ class CompositeAttributeBuilder(Builder):
         self.parent_builder = parent_builder
 
     def type(self) -> TypeBuilder:
-        tp: Type = Type('type', self.attribute, self.attribute.definition['type']._postgres_definition)
+        tp: Type = Type('type', self.attribute, self.attribute.definition['type'])
         return TypeBuilder(
             self.parent_builder, tp,
             lambda attribute, change: attribute.parent.alter(attribute.alter(change)))
@@ -760,6 +759,7 @@ class Enum(Component, Renamable, Alterable, Droppable, Creatable):
                 and other.old_name == self.component.name
 
     def create(self, values: tuple[str, ...]) -> Create:
+        # self.check_definition_is_present()
         return self.__class__.Create(self, values)
 
 
@@ -791,8 +791,8 @@ class EnumBuilder(Builder):
 class Domain(Component, Creatable, Alterable, Renamable, Droppable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            tdef: dict[str, Any] = self.component.definition["base_type"]._postgres_definition
-            return ('CREATE DOMAIN {}.{} AS {}.{};', [identifier(self.component.parent.name), identifier(self.component.name), identifier(schema_name(tdef['schema'])), identifier(tdef['type'].__name__)], [], )
+            tdef: dict[str, Any] = self.component.definition["base_type"]
+            return ('CREATE DOMAIN {}.{} AS {}.{};', [identifier(self.component.parent.name), identifier(self.component.name), identifier(tdef['schema']), identifier(tdef['type'])], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Domain.Drop\
@@ -850,8 +850,8 @@ class DomainBuilder(Builder):
 class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
     class Create(Create):
         def sql_sentence_params(self) -> SQLSentenceParams:
-            base_tdef = self.component.definition["base_type"]._postgres_definition
-            return ('CREATE SEQUENCE {}.{} AS {}.{};', [identifier(self.component.parent.name), identifier(self.component.name), identifier(schema_name(base_tdef['schema'])), identifier(base_tdef['type'].__name__)], [], )
+            base_tdef = self.component.definition["base_type"]
+            return ('CREATE SEQUENCE {}.{} AS {}.{};', [identifier(self.component.parent.name), identifier(self.component.name), identifier(base_tdef['schema']), identifier(base_tdef['type'])], [], )
 
         def is_opposite(self, other: GeneratesSQLSentence) -> bool:
             return other.__class__ == Sequence.Drop\
@@ -870,7 +870,7 @@ class Sequence(Component, Creatable, Renamable, Droppable, Alterable):
     class Type(Type):
         class Set(Type.Set):
             def sql_sentence_params(self) -> SQLSentenceParams:
-                return ('AS {}.{};', [identifier(schema_name(self.component.definition['schema'])), identifier(self.component.definition['type'].__name__)], [])
+                return ('AS {}.{};', [identifier(self.component.definition['schema']), identifier(self.component.definition['type'])], [])
 
             def is_opposite(self, other: GeneratesSQLSentence) -> bool:
                 return True
@@ -949,7 +949,7 @@ class SequenceBuilder(Builder):
         self.parent_builder = parent_builder
 
     def type(self) -> TypeBuilder:
-        tp: Sequence.Type = Sequence.Type('type', self.sequence, self.sequence.definition['base_type']._postgres_definition)
+        tp: Sequence.Type = Sequence.Type('type', self.sequence, self.sequence.definition['base_type'])
         return TypeBuilder(
             self.parent_builder, tp, lambda sequence, change: sequence.alter(change))
 
@@ -1048,16 +1048,19 @@ class Function(Component, Executable, Droppable, Creatable, Replaceable):
     def create(self, overload: str) -> Create:
         # TODO validate overload is not present in schema
         # TODO validate overload is not present in file
+        # self.check_definition_is_present()
         return self.__class__.Create(self, overload)
 
     def replace(self, overload: str) -> Replace:
         # TODO validate overload is not present in schema
         # TODO validate overload is not present in file
+        # self.check_definition_is_present()
         return self.__class__.Replace(self, overload)
 
     def drop(self, overload: str) -> Drop:
         # TODO validate overload is not present in schema
         # TODO validate overload is not present in file
+        # self.check_definition_is_present()
         return self.__class__.Drop(self, overload)
 
     # def execute(self, params: dict[str, Any]) -> Execute:
@@ -1119,11 +1122,8 @@ class SchemaBuilder(list[Any], Builder):
     def _get_builder(
         self, name: str, builder_cls: type, cls: type
     ) -> Builder:
-        tp: Optional[type] = self.schema.search_object(name)
-        if tp is None:
-            return builder_cls(self, cls(name, self.schema, None))
-        else:
-            return builder_cls(self, cls(name, self.schema, tp._postgres_definition))
+        definition: dict[str, Any] = self.schema.definition.get(name, None)
+        return builder_cls(self, cls(name, self.schema, definition))
 
     def table(self, name: str) -> TableBuilder:
         return self._get_builder(name, TableBuilder, Table)
@@ -1157,6 +1157,6 @@ class SchemaBuilder(list[Any], Builder):
         return self
 
 
-def builder(schema: ModuleType) -> SchemaBuilder:
-    schema: Schema = Schema(schema_name(schema), None, schema)
-    return SchemaBuilder(schema)
+def builder(schema: dict[str, Any]) -> SchemaBuilder:
+    name = next(iter(schema))
+    return SchemaBuilder(Schema(name, None, schema[name]))
