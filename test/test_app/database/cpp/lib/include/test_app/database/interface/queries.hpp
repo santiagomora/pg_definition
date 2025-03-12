@@ -31,11 +31,12 @@ namespace test_app::database::queries
 {
 
 struct create_author
-    : public pg::queries_database_on_transaction<
-          pg::fetch_one_functor,
-          pg::SingleResult_<author>>
+: public pg::queries_database_on_transaction<
+    create_author,
+    pg::fetch_one_functor,
+    pg::SingleResult_<author>>
 {
-    constexpr std::string_view query() const override
+    static constexpr const std::string_view query_string ()
     {
         return "select create_author();"; 
     };
@@ -43,87 +44,90 @@ struct create_author
 
 
 struct get_author_by_id
-    : public pg::queries_database_on_transaction<
-          pg::fetch_one_functor,
-          pg::OptionalResult_<pg::SingleResult_<author>>,
-          const pg::int8>
+: public pg::queries_database_on_transaction<
+    get_author_by_id,
+    pg::fetch_one_functor,
+    pg::OptionalResult_<pg::SingleResult_<author>>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const pg::int8&)
     {
         return "SELECT a from author a WHERE id = $1 LIMIT 1"; 
     };
 };
 
 
-class get_author_posts
-    : public pg::queries_database_on_transaction<
-          pg::fetch_many_functor,
-          pg::ContainedResult_<post>,
-          const author&>
+struct get_author_posts
+: public pg::queries_database_on_transaction<
+    get_author_posts,
+    pg::fetch_many_functor,
+    pg::ContainedResult_<post>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const author&)
     {
         return "SELECT get_author_posts(p_author := $1)";
     };
 };
 
 
-class get_post_by_id
-    : public pg::queries_database_on_transaction<
-          pg::fetch_one_functor,
-          pg::OptionalResult_<pg::SingleResult_<post>>,
-          const pg::int8&>
+struct get_post_by_id
+: public pg::queries_database_on_transaction<
+    get_post_by_id,
+    pg::fetch_one_functor,
+    pg::OptionalResult_<pg::SingleResult_<post>>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const pg::int8&)
     {
         return "SELECT p from post p WHERE id = $1 LIMIT 1";
     };
 };
 
 
-class get_post_comments
-    : public pg::queries_database_on_transaction<
-          pg::fetch_many_functor,
-          pg::ContainedResult_<comment>,
-          const post&>
+struct get_post_comments
+: public pg::queries_database_on_transaction<
+    get_post_comments,
+    pg::fetch_many_functor,
+    pg::ContainedResult_<comment>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const post&)
     {
         return "SELECT get_post_comments(p_post := $1)";
     };
 };
 
 
-class create_post
-    : public pg::queries_database_on_transaction<
-          pg::fetch_one_functor, pg::SingleResult_<post>,
-          const author&, const pg::text&, const pg::text&>
+struct create_post
+: public pg::queries_database_on_transaction<
+    create_post,
+    pg::fetch_one_functor,
+    pg::SingleResult_<post>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const author&, const pg::text&, const pg::text&)
     {
         return "SELECT create_post(p_author := $1, p_content := $2, p_title := $3)";
     };
 };
 
 
-class create_comment
-    : public pg::queries_database_on_transaction<
-          pg::fetch_one_functor, pg::SingleResult_<comment>,
-          const author&, const post&, const pg::text&>
+struct create_comment
+: public pg::queries_database_on_transaction<
+    create_comment,
+    pg::fetch_one_functor,
+    pg::SingleResult_<comment>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const author&, const post&, const pg::text&)
     {
         return "SELECT create_comment(p_author := $1, p_post := $2, p_content := $3)";
     };
 };
 
 
-class as_comment_post
-    : public pg::queries_database_on_transaction<
-          pg::fetch_one_functor, pg::SingleResult_<comment_post>,
-          const post&, const comment&, const pg::text&, const author&>
+struct as_comment_post
+: public pg::queries_database_on_transaction<
+    as_comment_post,
+    pg::fetch_one_functor,
+    pg::SingleResult_<comment_post>>
 {
-    constexpr std::string_view query() const override 
+    static constexpr const std::string_view query_string (const post&, const comment&, const pg::text&, const author&)
     {
         return "SELECT as_comment_post(p_post := $1, p_comment := $2, p_description := $3, p_author := $4)";
     };

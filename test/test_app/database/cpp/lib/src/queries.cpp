@@ -18,6 +18,10 @@ pg::db_environment& db::environment::env ()
         db::environment::_env = pg::db_environment("host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En", "test_app");
     }
     return db::environment::_env.value();
+    pqxx::connection conn("host=172.18.0.1 dbname=mutzhub port=5432 user=mutzhub password=WtbNMMpX46iynzjVobrh8Qu7omvFIL9JEvbkLYYCpCJNIwDWnBwcVquhk6vXe6En");
+    pqxx::work tx(conn);
+    const pg::int8 t = 1;
+    test_app::database::queries::get_author_by_id::query(tx, t);
 }
 
 

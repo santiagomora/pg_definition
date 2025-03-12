@@ -41,6 +41,8 @@ from pydantic import\
     create_model
 import core_types as bt
 import inspect
+from typing_extensions import\
+    Self
 
 
 # KNOWN BUGS
@@ -136,7 +138,7 @@ class table(compound):
             on_update: Optional['table.foreign_key_action'] = None,
             on_delete: Optional['table.foreign_key_action'] = None
         ) -> None:
-            if not isinstance(references, table):
+            if references is not Self and not isinstance(references, table):
                 raise TypeError(f'{table} must be of type table')
             if len(columns) != len(referenced_columns):
                 raise TypeError(f'must declare as many columns as referenced columns')
@@ -194,6 +196,8 @@ class table(compound):
                 raise TypeError(f'Columns "{already_constrained}" already constrained by a foreign key definition')
 
         def __call__(self, target: type):
+            if self.foreign_key['references'] is Self:
+                self.foreign_key['references'] = target
             assert isinstance(target, table)
             definition = target._postgres_definition
             if self.foreign_key['name'] in definition['foreign_keys']:
@@ -307,7 +311,7 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition: dict[str, Any] = dict()
         definition['schema'] = inspect.getmodule(target)
         definition['type'] = target
-        definition['bases'] = target._cpp_bases
+        definition['bases'] = tuple([base.get_py_cls(base.qualified_name) for base in target._cpp_bases])
         definition['comment'] = None
         definition['columns'] = accumulator.get_definition('columns', 'extraction')
         definition['primary_key'] = None

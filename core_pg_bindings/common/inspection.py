@@ -122,25 +122,3 @@ def load_functions_from_file(
                     raise Exception(f'Invalid function definition "{read_func}", overload "{params_str}" declared more than once')
             buf = []
 
-
-Identifier: TypeAlias = Union[sql.SQL, sql.Identifier]
-
-
-def identifier(sql_name: str) -> str:
-    if re.search(r'A-Z', sql_name) is not None or re.match(r'0-9', sql_name) is not None:
-        return sql.Identifier(sql_name)
-    return sql.SQL(re.escape(sql_name))
-
-
-def schema_name(schema: ModuleType) -> str:
-    return schema.__name__.rpartition(".")[-1]
-
-
-def qualified_overload(
-    schema: str, overload: str
-) -> str:
-    func_name = re.sub(r'\(.*', '', overload.split("$$")[0], flags=re.DOTALL)
-    func_name = re.sub(r'\s*CREATE\s+OR\s+REPLACE\s+FUNCTION\s*', '', func_name).strip()
-    func_name = f'CREATE OR REPLACE FUNCTION {schema}.{func_name} '
-    return re.sub(r'^.*CREATE\s+OR\s+REPLACE\s+FUNCTION.*?(?=\()', func_name, overload, flags=re.DOTALL)
-

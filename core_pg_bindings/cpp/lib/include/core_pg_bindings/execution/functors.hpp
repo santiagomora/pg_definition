@@ -59,7 +59,7 @@ class base_functor
 {
 public:
     virtual T operator() (
-        pqxx::work& tx, const std::string_view query, const std::tuple<Args...>& args
+        pqxx::dbtransaction& tx, const std::string_view query, const std::tuple<Args...>& args
     ) const = 0;
 };
 
@@ -70,8 +70,8 @@ class fetch_one_functor
 {
 public:
     typename T::Container operator() (
-        pqxx::work& tx, const std::string_view query, const std::tuple<Args...>& args
-    ) const override 
+        pqxx::dbtransaction& tx, const std::string_view query, const std::tuple<Args...>& args
+    ) const override
     {
         if constexpr (HasTPContainerAlias<T>::value)
         {
@@ -109,7 +109,7 @@ class fetch_many_functor
 {
 public:
     typename T::Container operator() (
-        pqxx::work& tx, const std::string_view query, const std::tuple<Args...>& args
+        pqxx::dbtransaction& tx, const std::string_view query, const std::tuple<Args...>& args
     ) const override
     {
         if constexpr (HasTPContainerAlias<T>::value)
@@ -161,7 +161,7 @@ class fetch_none_functor
 {
 public:
     typename T::Container operator() (
-        pqxx::work& tx, const std::string_view query, const std::tuple<Args...>& args
+        pqxx::dbtransaction& tx, const std::string_view query, const std::tuple<Args...>& args
     ) const override 
     {
         static_assert(std::is_same_v<T, NoResult_>, "fetch_none_functor result type must be NoResult_");

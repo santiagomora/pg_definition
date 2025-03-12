@@ -13,3 +13,4 @@ pyvenv.cfg
 *.kate-swp
 venv
 build
+clean

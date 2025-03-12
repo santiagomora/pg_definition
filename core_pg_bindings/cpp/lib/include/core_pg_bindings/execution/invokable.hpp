@@ -15,28 +15,30 @@ namespace core_pg_bindings
 {
 
 
-template<template <typename, typename...> class FT, typename T, typename... Args>
+template<typename Derived, template <typename, typename...> class FT, typename T>
 struct queries_database_on_transaction
 {
     using ResultType = typename T::Container;
-    using BaseType = queries_database_on_transaction<FT, T, Args...>;
-    ResultType operator() (pqxx::work& tx, Args&... args)
+    template<typename... Args> static ResultType query (
+        pqxx::dbtransaction& tx, Args&... args
+    )
     {
         ResultType v_res;
+        std::string_view query = Derived::query_string(args...);
+        std::tuple<Args...> arguments = std::make_tuple(args...);
         try
         {
             FT<T, Args...> ft;
-            v_res = ft(tx,  query(), std::make_tuple(args...));
+            v_res = ft(tx,  query, arguments);
         }
-        catch (std::exception const &e) 
+        catch (std::exception const &e)
         {
             std::cerr << e.what() << std::endl;
-            std::cerr << "CALLED QUERY: " << query() << "\nWITH PARAMETERS: " << ct::tp_to_string(std::make_tuple(args...)) << std::endl;
+            std::cerr << "CALLED QUERY: " << query << "\nWITH PARAMETERS: " << ct::to_string(arguments) << std::endl;
             throw e;
         }
         return v_res;
     };
-    virtual constexpr std::string_view query () const = 0;
 };
 
 
