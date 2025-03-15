@@ -14,6 +14,8 @@ pybind11_add_module(${PROJECT_NAME}
     wrapper.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${SGS_INCLUDE_PATH})
+target_include_directories(${PROJECT_NAME} PRIVATE ${PYBIND11_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${SGS_LIB_PATH}/libcore_pg_bindings.so)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${SGS_LIB_PATH}/libcore_types.so)
-target_include_directories(${PROJECT_NAME} PRIVATE ${PYBIND11_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${SGS_LIB_PATH}/libpqxx.so)
+target_link_libraries(${PROJECT_NAME} PRIVATE pq)

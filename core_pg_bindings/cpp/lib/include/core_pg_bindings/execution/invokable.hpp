@@ -34,7 +34,7 @@ struct queries_database_on_transaction
         catch (std::exception const &e)
         {
             std::cerr << e.what() << std::endl;
-            std::cerr << "CALLED QUERY: " << query << "\nWITH PARAMETERS: " << ct::to_string(arguments) << std::endl;
+            std::cerr << "CALLED QUERY: " << query << "\nWITH PARAMETERS: " << ct::to_str(arguments) << std::endl;
             throw e;
         }
         return v_res;

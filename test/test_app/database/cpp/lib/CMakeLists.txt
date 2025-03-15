@@ -13,8 +13,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -fPIC -march=native -flto=auto -Wno-attribute
 find_package(pybind11 REQUIRED)
 add_library(${PROJECT_NAME} SHARED
     src/queries.cpp
-    src/functions.cpp
-    src/types.cpp)
+    src/functions.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ./include)
 target_include_directories(${PROJECT_NAME} PRIVATE ${SGS_INCLUDE_PATH})

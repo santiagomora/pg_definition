@@ -95,8 +95,7 @@ class _BuiltinDetermineIfTargetIsDomainNode(MultipleChoiceDefinitionFlowNode):
         super().__init__(2, 'builtin-determine-if-target-is-domain-node')
 
     def execute(self, target: type, accumulator: FlowAccumulator) -> None:
-        self.is_domain = hasattr(target, 'base_type')\
-            and not target.base_type.qualified_name.startswith('core_types')
+        self.is_domain = hasattr(target, 'base_type')
 
     def get_next(self, accumulator: FlowAccumulator) -> DefinitionFlowNode:
         if self.is_domain:
