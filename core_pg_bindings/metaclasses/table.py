@@ -311,7 +311,7 @@ class _TableStoreFinalDefinitionNode(SingleChoiceDefinitionFlowNode):
         definition: dict[str, Any] = dict()
         definition['schema'] = inspect.getmodule(target)
         definition['type'] = target
-        definition['bases'] = tuple([base.get_py_cls(base.qualified_name) for base in target._cpp_bases])
+        definition['bases'] = tuple([base.get_py_cls() for base in target._cpp_bases])
         definition['comment'] = None
         definition['columns'] = accumulator.get_definition('columns', 'extraction')
         definition['primary_key'] = None

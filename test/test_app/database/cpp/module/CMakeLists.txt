@@ -7,6 +7,7 @@ set(PYTHON_VENV_PATH $ENV{VIRTUAL_ENV})
 set(SGS_INCLUDE_PATH ${PYTHON_VENV_PATH}/include/python${PYTHON_VERSION}/sgs)
 set(SGS_LIB_PATH ${PYTHON_VENV_PATH}/lib/python${PYTHON_VERSION}/sgs/)
 set(pybind11_DIR ${PYTHON_VENV_PATH}/lib/python${PYTHON_VERSION}/site-packages/pybind11/share/cmake/pybind11)
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -fPIC -march=native -flto=auto -Wno-attributes -Wno-deprecated-declarations")
 
 find_package(pybind11 REQUIRED)
 pybind11_add_module(${PROJECT_NAME}
