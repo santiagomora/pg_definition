@@ -1,5 +1,5 @@
 annotated-types==0.6.0
-# "base_types @ git+ssh://git@github.com/santiagomora/base_types.git@b0eb87cbf82a2a6dd4c816d11f263b622ea6b9ff#egg=base_types",
+"core_types @ git@distrib.sgs-devel.com:/home/git/core_types@4c778248c52901423a827e39c6e46c40527435b6#egg=core_types"
 compress-pickle==2.1.0
 lz4==4.3.3
 mypy==1.8.0
