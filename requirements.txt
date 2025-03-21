@@ -1,5 +1,5 @@
+git+ssh://git@distrib.sgs-devel.com:/home/git/core_types@4c778248c52901423a827e39c6e46c40527435b6#egg=core_types"
 annotated-types==0.6.0
-"core_types @ git@distrib.sgs-devel.com:/home/git/core_types@4c778248c52901423a827e39c6e46c40527435b6#egg=core_types"
 compress-pickle==2.1.0
 lz4==4.3.3
 mypy==1.8.0

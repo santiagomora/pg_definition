@@ -81,7 +81,7 @@ class BuildCMakeExt(build_ext):
         print(f"[BUILD] \"{extension.name}\": Configuring cmake project", file=sys.stdout)
         # Change your cmake arguments below as necessary
         # Below is just an example set of arguments for building Blender as a Python module
-        self.spawn(['cmake', f'-H{extension.cmake_lists_path}', f'-B{extension_path}'])
+        self.spawn(['cmake', f'-H{extension.cmake_lists_path}', f'-B{extension_path}', '-DUSE_IPO=off'])
         print(f"[BUILD] \"{extension.name}\": Building libraries", file=sys.stdout)
         self.spawn(["cmake", "--build", extension_path])
         # Build finished, now copy the files into the copy directory
