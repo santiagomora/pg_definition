@@ -11,14 +11,6 @@ license = { text = "GPL-3.0" }
 keywords = ["test", "cmake", "extension"]
 requires-python = ">=3.12"
 classifiers = [
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
-    "Natural Language :: English",
-    "Programming Language :: C",
-    "Programming Language :: C++",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: Implementation :: CPython"
 ]
 
 [project.optional-dependencies]
