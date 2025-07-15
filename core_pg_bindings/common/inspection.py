@@ -3,13 +3,9 @@ from typing import\
     TextIO,\
     TypeAlias,\
     Union
-from types import\
-    ModuleType
 import re
 from pydantic.fields import\
     FieldInfo
-from psycopg import\
-    sql
 
 
 def extract_definition_fields(cls: type) -> Generator[tuple[str, FieldInfo], None, None]:
