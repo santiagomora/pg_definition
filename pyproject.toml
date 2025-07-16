@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools", "wheel"]  # Add other build dependencies if needed
+requires = ["setuptools", "wheel", "core_cpp_packaging_tools==0.0.0", "pybind11==2.13.6"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "core_pg_bindings"
 version = "0.0.0"
-description = "Core C++ type wrappers"
+description = "Core C++ Postgres function wrappers"
 readme = "README.md"
 keywords = ["test", "cmake", "extension"]
 requires-python = ">=3.12"
